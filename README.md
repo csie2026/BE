@@ -26,7 +26,7 @@
 | member/dto/MemberResponse.java | 회원 응답 계약 위치 확보 |
 | member/dto/MemberUpdateRequest.java | 회원 수정 요청 계약 위치 확보 |
 | hiking/domain/HikingRecord.java | 등산 기록 모델 위치 확보. 필드·관계·JPA 매핑은 미정 |
-| src/main/resources/application-local.yml (BE 기준) | 로컬 환경별 설정 위치 확보. 현재 주석만 포함 |
+| src/main/resources/application-local.yml (BE 기준) | local 프로필에서 BE/.env를 선택적으로 가져오는 설정 |
 | src/main/resources/application-prod.yml (BE 기준) | 운영 환경별 설정 위치 확보. 현재 주석만 포함 |
 | 각 패키지의 .gitkeep | 빈 패키지를 포함한 디렉터리를 Git으로 추적할 수 있도록 유지 |
 | README.md (이 파일) | 구조, 생성 이유 및 미구현 범위 기록 |
@@ -73,14 +73,36 @@ Java 경로는 `src/main/java/com/ggmount` 기준입니다.
 
 ### 키 발급 후 설정
 
-실행 프로세스 또는 IDE 실행 설정에 다음 환경변수를 등록합니다. 실제 값이나 비밀키 파일은 저장소에 추가하지 않습니다.
+로컬에서는 BE/.env에, 운영에서는 서버/배포 플랫폼의 환경변수에 다음 값을 등록합니다. 실제 값이나 비밀키 파일은 저장소에 추가하지 않습니다.
 
 - `GOOGLE_CLIENT_ID`
 - `GOOGLE_CLIENT_SECRET`
 - `KAKAO_CLIENT_ID` — Kakao REST API 키
 - `KAKAO_CLIENT_SECRET` — 해당 REST API 키의 Client Secret
 
-기존 `.env.example`이 없어 새로 생성하지 않았습니다. Spring Boot가 `.env` 파일을 자동으로 읽는 구성은 아니므로 OS/IDE/배포 환경에서 변수를 주입해야 합니다. 환경변수를 미설정한 상태는 실제 OAuth 실행을 지원하지 않습니다.
+### 로컬 .env 준비
+
+1. clone 후 BE 디렉터리에서 `Copy-Item .env.example .env` (PowerShell) 또는 `cp .env.example .env` (macOS/Linux)를 실행합니다. 이미 .env가 있으면 덮어쓰지 마세요.
+2. 발급받은 실제 키를 .env의 각 등호 뒤에 입력합니다. 키 발급 전에는 빈 상태로 두며 가짜 값을 넣지 않습니다.
+3. IntelliJ 실행 설정의 Working directory를 BE 디렉터리로 지정하고, Active profiles를 `local`로 설정합니다. Active profiles 항목이 없으면 Program arguments에 `--spring.profiles.active=local`을 지정합니다. OAuth 키를 IntelliJ 환경변수에 중복 입력할 필요는 없습니다.
+4. 터미널 실행은 BE 디렉터리에서 `./mvnw spring-boot:run "-Dspring-boot.run.profiles=local"`을 사용합니다. Windows에서는 `./mvnw.cmd`를 사용합니다. 실제 애플리케이션 실행에는 아래의 기존 DB 설정 제약도 적용됩니다.
+
+Spring Boot 4.1.1의 기본 Config Data 기능을 사용하며 라이브러리는 추가하지 않습니다. local 프로필의 `spring.config.import: "optional:file:./.env[.properties]"`가 .env를 Java properties 형식으로 읽어 Spring Environment에 등록합니다. 따라서 기존 application.yaml의 `${GOOGLE_CLIENT_ID}` 등에서 그대로 참조할 수 있습니다. OS 환경변수 자체를 생성하는 방식은 아닙니다.
+
+- `.env`: 개인 로컬 값. .gitignore에 의해 Git에서 제외되며 BE 실행 작업 디렉터리 기준으로 읽습니다.
+- `.env.example`: 네 변수 이름과 빈 값만 담은 Git 추적용 템플릿. 자동으로 읽지는 않습니다.
+- `application.yaml`: 모든 환경에 공통인 OAuth 설정과 `${...}` 참조를 유지합니다.
+- `application-local.yml`: local 프로필에서만 .env를 가져옵니다.
+
+.env는 `KEY=VALUE` 형식으로 작성합니다. 일반 dotenv 파서가 아니라 properties 파서를 사용하므로 값을 따옴표로 감싸거나 `export`를 붙이지 마세요. 주석은 별도 줄에서 `#`으로 시작하며, 값 뒤에 인라인 주석을 붙이지 마세요.
+
+`optional:` 덕분에 .env 파일이 없어도 파일 누락 자체로 빌드/테스트가 실패하지 않습니다. 다만 실제 OAuth 로그인에는 유효한 키가 필요하며, 기존 전체 컨텍스트 테스트의 DB 설정 요구사항을 없애는 설정은 아닙니다. 빈 .env를 복사한 것만으로 서버 실행 준비가 완료되지는 않습니다.
+
+### 운영 환경 주입
+
+운영에서는 `SPRING_PROFILES_ACTIVE=prod`를 설정하고 local 프로필을 함께 활성화하지 않습니다. 서버/컨테이너/배포 플랫폼의 환경변수 또는 Secret 관리 기능을 통해 위 네 OAuth 값을 실행 프로세스에 주입합니다. .env 파일은 서버에 배포하지 않습니다. prod 프로필은 로컬 .env 가져오기 설정을 활성화하지 않으며 기존 `${...}` 참조가 환경변수에서 값을 읽습니다. 같은 이름의 OS 환경변수가 있으면 로컬 파일 값보다 우선합니다.
+
+참고: [Spring Boot 외부 설정 — Config Data 가져오기, 확장자 힌트 및 우선순위](https://docs.spring.io/spring-boot/reference/features/external-config.html).
 
 Google Cloud Console에서 웹 애플리케이션 OAuth 클라이언트를 만들고, 승인된 리디렉션 URI에 `http://localhost:8080/login/oauth2/code/google`을 등록합니다. 요청 scope는 `profile`, `email`만 사용하며 Google 기본 Provider를 활용합니다.
 

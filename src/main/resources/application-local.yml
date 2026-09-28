@@ -1,3 +1,5 @@
-# 로컬 개발 환경 설정을 위한 파일입니다.
-# DB 및 OAuth 공급자 확정 후 환경 변수 참조로 설정을 추가합니다.
-# 비밀번호, 클라이언트 시크릿, 토큰 키를 저장소에 직접 작성하지 않습니다.
+# local 프로필에서만 실행 작업 디렉터리(BE)의 .env를 읽습니다.
+# .env는 KEY=VALUE 형식이며 Git에 커밋하지 않습니다.
+spring:
+  config:
+    import: "optional:file:./.env[.properties]"
