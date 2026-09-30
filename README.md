@@ -128,3 +128,15 @@ Kakao Developers에서 카카오 로그인을 활성화하고 Redirect URI에 `h
 - 실제 공급자 로그인은 키 발급, 콘솔 설정 및 DB 실행 환경 구성 후 브라우저로 검증해야 합니다.
 - `.gitkeep`은 Git의 특별한 기능이 아닌 일반 추적 파일입니다. 커밋에 포함하면 빈 패키지 구조도 원격에 보존됩니다.
 - 이번 작업은 구조 파일 생성까지이며 커밋과 원격 push는 수행하지 않습니다.
+
+## 프로필·등산일지·랭킹 구현 업데이트
+
+위의 초기 구조/TODO 설명은 구현 전 기록입니다. 현재 회원과 일지를 JPA에 저장하고 Flyway V1 migration으로 스키마를 관리합니다. API와 변경 사항은 루트의 IMPLEMENTATION_REPORT.md를 참고하세요.
+
+- 기존 HTTP 세션 인증과 CSRF 보호를 유지합니다. FE는 GET /api/csrf에서 받은 토큰을 쓰기 요청에 전달합니다.
+- OAuth 성공 응답은 JSON에서 FRONTEND_URL/?oauth=success 리디렉션으로 변경했습니다. FRONTEND_URL 기본값은 http://localhost:5173입니다.
+- PostgreSQL 접속은 local 프로필의 DB_URL, DB_USERNAME, DB_PASSWORD 설정을 사용합니다. 운영에서는 SPRING_DATASOURCE_URL, SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD와 OAuth 환경변수를 주입합니다.
+- Flyway V1은 저장소에 기존 Entity/migration이 없던 상태를 기준으로 작성했습니다. 기존 운영 DB의 테이블은 직접 확인하지 않았습니다. 이미 비어 있지 않은 스키마는 적용 전에 스키마와 Flyway baseline 정책을 검토해야 합니다. 자동 baseline이나 기존 테이블 삭제는 하지 않습니다.
+- 테스트: mvn test. 실행 JAR: mvn package. 테스트는 H2 PostgreSQL 모드와 테스트용 OAuth 설정으로 외부 키 없이 실행됩니다.
+- 개발 FE의 Vite proxy 또는 운영 reverse proxy에서 /api, /oauth2, /login을 BE에 연결해 같은 origin의 세션을 사용합니다.
+- 점수 공식이 미확정이므로 score는 null(미산정)이며 일지 작성 시 임의 점수를 부여하지 않습니다.

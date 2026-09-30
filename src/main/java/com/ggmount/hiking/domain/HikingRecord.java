@@ -1,8 +1,19 @@
 package com.ggmount.hiking.domain;
-
-/**
- * 등산 기록 도메인을 정의할 위치입니다. 기록 항목과 관계 확정 후 구현합니다.
- * <p>초기 구조용 선언이며 아직 실행 기능이나 Spring 빈 등록은 없습니다.</p>
- */
+import com.ggmount.member.domain.Member;
+import com.ggmount.hiking.dto.HikingRecordRequest;
+import jakarta.persistence.*;
+import lombok.Getter;
+import java.time.LocalDate;
+@Entity @Table(name="hiking_records") @Getter
 public class HikingRecord {
+ @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
+ @ManyToOne(fetch=FetchType.LAZY,optional=false) @JoinColumn(name="member_id",nullable=false) private Member member;
+ @Column(nullable=false,length=100) private String mountainName;
+ @Column(nullable=false,length=100) private String title;
+ @Column(nullable=false,length=10000) private String content;
+ @Column(nullable=false) private LocalDate hikingDate;
+ @Column(name="is_public",nullable=false) private boolean publicRecord;
+ protected HikingRecord() {}
+ public HikingRecord(Member member,HikingRecordRequest r) { this.member=member; update(r); }
+ public void update(HikingRecordRequest r) { mountainName=r.mountainName().trim(); title=r.title().trim(); content=r.content(); hikingDate=r.hikingDate(); publicRecord=r.isPublic(); }
 }
