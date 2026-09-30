@@ -18,8 +18,12 @@ public class SecurityConfig {
             OAuth2LoginFailureHandler failureHandler) throws Exception {
         http
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/oauth2/authorization/**", "/login/**", "/error").permitAll()
+                        .requestMatchers("/oauth2/authorization/**", "/login/**", "/error", "/api/csrf").permitAll()
                         .anyRequest().authenticated())
+                .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
+                    response.setStatus(401); response.setContentType("application/json"); response.getWriter().write("{\"error\":\"unauthorized\"}");
+                }))
+                .logout(logout -> logout.logoutUrl("/api/logout").logoutSuccessHandler((request,response,authentication) -> response.setStatus(204)))
                 .oauth2Login(oauth -> oauth
                         .userInfoEndpoint(userInfo -> userInfo.userService(userService))
                         .successHandler(successHandler)

@@ -1,8 +1,10 @@
 package com.ggmount.member.repository;
-
-/**
- * 회원 저장소 계약을 정의할 위치입니다. 식별자와 영속성 모델 확정 후 구현합니다.
- * <p>초기 구조용 선언이며 아직 실행 기능이나 Spring 빈 등록은 없습니다.</p>
- */
-public interface MemberRepository {
+import com.ggmount.member.domain.Member;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.Optional;
+import java.util.List;
+public interface MemberRepository extends JpaRepository<Member,Long> {
+ Optional<Member> findByProviderAndProviderId(String provider,String providerId);
+ @org.springframework.data.jpa.repository.Query("select m from Member m where m.profileCompleted=true order by case when m.score is null then 1 else 0 end, m.score desc, m.id asc")
+ List<Member> findRanking(org.springframework.data.domain.Pageable pageable);
 }

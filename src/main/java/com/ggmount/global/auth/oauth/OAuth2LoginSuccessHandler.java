@@ -10,17 +10,17 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
+    private final String frontendUrl;
+    public OAuth2LoginSuccessHandler(@org.springframework.beans.factory.annotation.Value("${app.frontend-url:http://localhost:5173}") String frontendUrl) { this.frontendUrl=frontendUrl; }
+
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response,
             Authentication authentication) throws IOException {
         // 공통 정보는 ((OAuthPrincipal) authentication.getPrincipal()).getUserInfo()로 접근합니다.
-        // TODO: 추후 JWT Access Token / Refresh Token 발급
-        // TODO: 프론트엔드 연동 시 토큰 전달 방식 및 로그인 완료 응답 확정
+        // 기존 세션 인증을 유지하며 토큰을 URL에 전달하지 않습니다.
         clearAuthenticationAttributes(request);
         new HttpSessionRequestCache().removeRequest(request, response);
-        response.setStatus(HttpServletResponse.SC_OK);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter().write("{\"status\":\"success\"}");
+        response.sendRedirect(frontendUrl + "/?oauth=success");
     }
 }

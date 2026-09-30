@@ -1,8 +1,15 @@
 package com.ggmount.member.controller;
-
-/**
- * 회원 HTTP 요청을 처리할 위치입니다. API 명세 확정 후 구현합니다.
- * <p>초기 구조용 선언이며 아직 실행 기능이나 Spring 빈 등록은 없습니다.</p>
- */
+import com.ggmount.global.auth.oauth.OAuthPrincipal;
+import com.ggmount.member.dto.*;
+import com.ggmount.member.service.MemberService;
+import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api/users")
 public class MemberController {
+ private final MemberService service;
+ public MemberController(MemberService service) { this.service=service; }
+ @GetMapping("/me") public MemberResponse me(@AuthenticationPrincipal OAuthPrincipal p) { return MemberResponse.from(service.current(p)); }
+ @PatchMapping("/me/profile") public MemberResponse update(@AuthenticationPrincipal OAuthPrincipal p,@Valid @RequestBody MemberUpdateRequest request) { return service.update(p,request); }
+ @GetMapping("/{id}/profile") public PublicMemberResponse profile(@PathVariable Long id) { var m=service.find(id); service.requireComplete(m); return PublicMemberResponse.from(m); }
 }

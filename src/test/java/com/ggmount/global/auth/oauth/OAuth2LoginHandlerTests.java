@@ -24,11 +24,11 @@ class OAuth2LoginHandlerTests {
         OAuthPrincipal principal = new OAuthPrincipal(List.of(), Map.of("sub", "42"), "sub",
                 new OAuthUserInfo("google", "42", null, null, null));
 
-        new OAuth2LoginSuccessHandler().onAuthenticationSuccess(request, response,
+        new OAuth2LoginSuccessHandler("http://localhost:5173").onAuthenticationSuccess(request, response,
                 new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "google"));
 
-        assertEquals(200, response.getStatus());
-        assertEquals("{\"status\":\"success\"}", response.getContentAsString());
+        assertEquals(302, response.getStatus());
+        assertEquals("http://localhost:5173/?oauth=success", response.getRedirectedUrl());
         assertNull(request.getSession().getAttribute(WebAttributes.AUTHENTICATION_EXCEPTION));
         assertNull(cache.getRequest(request, response));
         assertEquals("google:42", principal.getName());
