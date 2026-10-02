@@ -34,6 +34,26 @@ class ProfileJournalIntegrationTests {
  @Autowired jakarta.persistence.EntityManager entityManager;
  MockMvc mvc;
  @BeforeEach void setup() { mvc=MockMvcBuilders.webAppContextSetup(context).addFilters(filters).build(); }
+ @Test void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exception {
+  var authenticated=session("mountain-selection");
+  mvc.perform(get("/api/mountains")).andExpect(status().isUnauthorized());
+  mvc.perform(get("/api/mountains").session(authenticated))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(140));
+  long mountainId=jdbc.queryForObject("select mountain_id from courses order by id limit 1",Long.class);
+  long courseId=jdbc.queryForObject("select min(id) from courses where mountain_id=?",Long.class,mountainId);
+  int count=jdbc.queryForObject("select count(*) from courses where mountain_id=?",Integer.class,mountainId);
+  mvc.perform(get("/api/mountains/"+mountainId+"/courses").session(authenticated))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(count))
+   .andExpect(jsonPath("$[0].mountainId").value(mountainId)).andExpect(jsonPath("$[0].path").doesNotExist());
+  mvc.perform(get("/api/courses/"+courseId).session(authenticated))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.course.id").value(courseId))
+   .andExpect(jsonPath("$.path").isArray()).andExpect(jsonPath("$.path[0].length()").value(2));
+  long emptyMountain=jdbc.queryForObject("select min(m.id) from mountains m where not exists (select 1 from courses c where c.mountain_id=m.id)",Long.class);
+  mvc.perform(get("/api/mountains/"+emptyMountain+"/courses").session(authenticated))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+  mvc.perform(get("/api/mountains/999999/courses").session(authenticated)).andExpect(status().isNotFound());
+  mvc.perform(get("/api/courses/999999").session(authenticated)).andExpect(status().isNotFound());
+ }
  OAuthUserInfo info(String id) { return new OAuthUserInfo("google",id,"private@example.com","Social name","https://example.com/p.png"); }
  MockHttpSession session(String id) {
   var p=new OAuthPrincipal(List.of(),Map.of("sub",id),"sub",info(id));
