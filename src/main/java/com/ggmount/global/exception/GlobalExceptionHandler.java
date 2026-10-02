@@ -7,6 +7,8 @@ import org.springframework.http.ResponseEntity;
 import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+ @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+ public ResponseEntity<?> oversizedUpload() { return ResponseEntity.status(413).body(Map.of("error","image_too_large","message","이미지는 5MiB 이하로 올려주세요.")); }
  @ExceptionHandler(MethodArgumentNotValidException.class)
  public ResponseEntity<?> validation(MethodArgumentNotValidException e) { return ResponseEntity.badRequest().body(Map.of("error","validation_failed","message",e.getBindingResult().getAllErrors().getFirst().getDefaultMessage())); }
  @ExceptionHandler(HttpMessageNotReadableException.class)

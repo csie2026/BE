@@ -1,0 +1,55 @@
+package com.ggmount.member.service;
+
+import com.ggmount.global.auth.oauth.OAuthPrincipal;
+import com.ggmount.member.dto.MemberResponse;
+import com.ggmount.member.repository.PersonalDataRepository;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+
+@Service
+@Transactional(readOnly = true)
+public class PersonalDataService {
+    private final MemberService members;
+    private final PersonalDataRepository data;
+    private final ImageUploadValidator images;
+
+    public PersonalDataService(MemberService members, PersonalDataRepository data, ImageUploadValidator images) {
+        this.members = members;
+        this.data = data;
+        this.images = images;
+    }
+
+    public ImageUploadValidator.ImageData image(OAuthPrincipal principal, String kind, String revision) {
+        Long memberId = members.current(principal).getId();
+        return data.findImage(memberId, imageKind(kind), revision).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "이미지가 없거나 현재 계정의 이미지 URL이 아닙니다."));
+    }
+
+    @Transactional
+    public MemberResponse saveImage(OAuthPrincipal principal, String kind, MultipartFile file) {
+        Long memberId = members.current(principal).getId();
+        String selectedKind = imageKind(kind);
+        var image = images.validate(file);
+        data.lockMember(memberId);
+        data.saveImage(memberId, selectedKind, image);
+        return members.me(principal);
+    }
+
+    @Transactional
+    public void deleteImage(OAuthPrincipal principal, String kind) {
+        Long memberId = members.current(principal).getId();
+        String selectedKind = imageKind(kind);
+        data.lockMember(memberId);
+        data.deleteImage(memberId, selectedKind);
+    }
+
+    private String imageKind(String kind) {
+        if (!"profile".equals(kind) && !"background".equals(kind)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "지원하지 않는 이미지 종류입니다.");
+        }
+        return kind;
+    }
+}
