@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.csrf.CsrfException;
 
 @Configuration
 public class SecurityConfig {
@@ -20,10 +21,25 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/oauth2/authorization/**", "/login/**", "/error", "/api/csrf").permitAll()
                         .anyRequest().authenticated())
-                .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) -> {
-                    response.setStatus(401); response.setContentType("application/json"); response.getWriter().write("{\"error\":\"unauthorized\"}");
-                }))
-                .logout(logout -> logout.logoutUrl("/api/logout").logoutSuccessHandler((request,response,authentication) -> response.setStatus(204)))
+                .exceptionHandling(errors -> errors
+                        .authenticationEntryPoint((request, response, exception) -> {
+                            response.setStatus(401);
+                            response.setCharacterEncoding("UTF-8");
+                            response.setContentType("application/json");
+                            response.getWriter().write("{\"error\":\"unauthorized\",\"message\":\"로그인이 필요합니다. 다시 로그인해주세요.\"}");
+                        })
+                        .accessDeniedHandler((request, response, exception) -> {
+                            response.setStatus(403);
+                            response.setCharacterEncoding("UTF-8");
+                            response.setContentType("application/json");
+                            String body = exception instanceof CsrfException
+                                    ? "{\"error\":\"invalid_csrf\",\"message\":\"인증 토큰이 없거나 만료되었습니다. /api/csrf 조회 후 반환된 헤더와 토큰으로 다시 요청해주세요.\"}"
+                                    : "{\"error\":\"forbidden\",\"message\":\"이 요청에 대한 권한이 없습니다.\"}";
+                            response.getWriter().write(body);
+                        }))
+                .logout(logout -> logout.logoutUrl("/api/logout")
+                        .invalidateHttpSession(true).clearAuthentication(true).deleteCookies("JSESSIONID")
+                        .logoutSuccessHandler((request,response,authentication) -> response.setStatus(204)))
                 .oauth2Login(oauth -> oauth
                         .userInfoEndpoint(userInfo -> userInfo.userService(userService))
                         .successHandler(successHandler)
