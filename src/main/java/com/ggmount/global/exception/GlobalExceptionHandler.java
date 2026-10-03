@@ -1,8 +1,46 @@
 package com.ggmount.global.exception;
-
-/**
- * 공통 예외 응답을 처리할 위치입니다. 응답 규격 확정 후 구현합니다.
- * <p>초기 구조용 선언이며 아직 실행 기능이나 Spring 빈 등록은 없습니다.</p>
- */
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.ResponseEntity;
+import java.util.Map;
+// 검증 실패·잘못된 JSON·업로드 제한을 FE 공통 오류 처리에서 읽을 수 있는 응답으로 변환한다.
+@RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    public ResponseEntity<?> oversizedUpload() {
+        return ResponseEntity.status(413)
+            .body(Map.of(
+                "error",
+                "image_too_large",
+                "message",
+                "이미지는 5MiB 이하로 올려주세요."
+            ));
+    }
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<?> validation(MethodArgumentNotValidException e) {
+        return ResponseEntity.badRequest()
+            .body(Map.of(
+                "error",
+                "validation_failed",
+                "message",
+                e.getBindingResult().getAllErrors().getFirst().getDefaultMessage()
+            ));
+    }
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<?> invalidJson() {
+        return ResponseEntity.badRequest()
+            .body(Map.of("error", "invalid_request", "message", "입력 형식을 확인해주세요."));
+    }
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<?> status(ResponseStatusException e) {
+        return ResponseEntity.status(e.getStatusCode())
+            .body(Map.of(
+                "error",
+                "request_failed",
+                "message",
+                e.getReason() == null ? "요청을 처리할 수 없습니다." : e.getReason()
+            ));
+    }
 }

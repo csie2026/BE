@@ -1,3 +1,47 @@
 spring:
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   application:
     name: ggmount
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  jackson:
+    deserialization:
+      accept-float-as-int: false
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            provider: google
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope: [profile, email]
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+          kakao:
+            provider: kakao
+            client-name: Kakao
+            client-id: ${KAKAO_CLIENT_ID}
+            client-secret: ${KAKAO_CLIENT_SECRET}
+            client-authentication-method: client_secret_post
+            authorization-grant-type: authorization_code
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+            # 추가 scope 없이 앱에 설정된 동의항목을 사용합니다.
+            # Kakao Developers 동의항목 설정 후 필요한 항목만 추가하세요.
+            # scope: [profile_nickname, profile_image, account_email]
+        provider:
+          kakao:
+            authorization-uri: https://kauth.kakao.com/oauth/authorize
+            token-uri: https://kauth.kakao.com/oauth/token
+            user-info-uri: https://kapi.kakao.com/v2/user/me
+            user-name-attribute: id
+
+app:
+  frontend-url: ${FRONTEND_URL:http://localhost:5173}
+  kma:
+    # data.go.kr 일반인증키(Decoding). 기상청_단기예보 조회서비스 활용신청 필요
+    service-key: ${KMA_SERVICE_KEY:}

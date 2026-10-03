@@ -1,0 +1,516 @@
+package com.ggmount;
+import com.ggmount.global.auth.oauth.*;
+import com.ggmount.member.domain.Member;
+import com.ggmount.member.service.OAuthMemberService;
+import com.ggmount.member.repository.MemberRepository;
+import com.ggmount.member.dto.MemberUpdateRequest;
+import jakarta.validation.Validator;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.mock.web.MockHttpSession;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.web.FilterChainProxy;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.test.web.servlet.*;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.MediaType;
+import java.time.Year;
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+@SpringBootTest
+@Transactional
+class ProfileJournalIntegrationTests {
+    @Autowired
+    WebApplicationContext context;
+    @Autowired
+    FilterChainProxy filters;
+    @Autowired
+    OAuthMemberService oauth;
+    @Autowired
+    MemberRepository members;
+    @Autowired
+    Validator validator;
+    @Autowired
+    org.springframework.jdbc.core.JdbcTemplate jdbc;
+    @Autowired
+    jakarta.persistence.EntityManager entityManager;
+    MockMvc mvc;
+    @BeforeEach
+    void setup() {
+        mvc = MockMvcBuilders.webAppContextSetup(context)
+            .addFilters(filters)
+            .build();
+    }
+    @Test
+    void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exception {
+        var authenticated = session("mountain-selection");
+        mvc.perform(get("/api/mountains")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/mountains").session(authenticated))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(140));
+        long mountainId = jdbc.queryForObject("select mountain_id from courses order by id limit 1", Long.class);
+        long courseId = jdbc.queryForObject(
+            "select min(id) from courses where mountain_id=?",
+            Long.class,
+            mountainId
+        );
+        int count = jdbc.queryForObject(
+            "select count(*) from courses where mountain_id=?",
+            Integer.class,
+            mountainId
+        );
+        mvc.perform(get("/api/mountains/" + mountainId + "/courses").session(authenticated))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(count))
+        .andExpect(jsonPath("$[0].mountainId").value(mountainId))
+        .andExpect(jsonPath("$[0].path").doesNotExist());
+        mvc.perform(get("/api/courses/" + courseId).session(authenticated))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.course.id").value(courseId))
+        .andExpect(jsonPath("$.path").isArray()).andExpect(jsonPath("$.path[0].length()").value(2));
+        long emptyMountain = jdbc.queryForObject(
+            "select min(m.id) from mountains m where not exists (select 1 from courses c where c.mountain_id=m.id)",
+            Long.class
+        );
+        mvc.perform(get("/api/mountains/" + emptyMountain + "/courses").session(authenticated))
+        .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/mountains/999999/courses").session(authenticated))
+            .andExpect(status().isNotFound());
+        mvc.perform(get("/api/courses/999999").session(authenticated)).andExpect(status().isNotFound());
+    }
+    OAuthUserInfo info(String id) {
+        return new OAuthUserInfo(
+            "google",
+            id,
+            "private@example.com",
+            "Social name",
+            "https://example.com/p.png"
+        );
+    }
+    MockHttpSession session(String id) {
+        var p = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id));
+        var security = SecurityContextHolder.createEmptyContext();
+        security.setAuthentication(new OAuth2AuthenticationToken(p, p.getAuthorities(), "google"));
+        var session = new MockHttpSession();
+        session.setAttribute(
+            HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,
+            security
+        );
+        return session;
+    }
+    String csrf(MockHttpSession session) throws Exception {
+        String json = mvc.perform(get("/api/csrf").session(session))
+            .andExpect(status().isOk())
+            .andReturn()
+            .getResponse()
+            .getContentAsString();
+        return json.split("\"token\":\"")[1].split("\"")[0];
+    }
+    @Test
+    void newAndReturningLoginPreserveCompletedProfileAndCalculateAge() throws Exception {
+        Member m = oauth.processLogin(info("one"));
+        assertFalse(m.isProfileCompleted());
+        var session = session("one");
+        mvc.perform(get("/api/users/me").session(session))
+            .andExpect(jsonPath("$.profileCompleted").value(false));
+        mvc.perform(patch("/api/users/me/profile")
+            .session(session)
+            .header("X-CSRF-TOKEN", csrf(session))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"nickname\":\"Trail user\",\"birthYear\":2003}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.profileCompleted").value(true))
+            .andExpect(jsonPath("$.age").value(Year.now().getValue() - 2003 + 1));
+        Member returning = oauth.processLogin(info("one"));
+        assertEquals(m.getId(), returning.getId());
+        assertEquals("Trail user", returning.getNickname());
+        assertTrue(returning.isProfileCompleted());
+    }
+    @Test
+    void validatesYearAndNicknameAndRejectsInvalidApiRequests() throws Exception {
+        assertFalse(validator.validate(new MemberUpdateRequest("a", 1900)).size() > 0);
+        assertFalse(validator.validate(new MemberUpdateRequest("a", Year.now().getValue())).size() > 0);
+        for (Integer year : Arrays.asList(null, 1899, Year.now().getValue() + 1))
+            assertFalse(validator.validate(new MemberUpdateRequest("a", year))
+                .isEmpty());
+        assertFalse(validator.validate(new MemberUpdateRequest(" ", 2003)).isEmpty());
+        oauth.processLogin(info("invalid"));
+        var session = session("invalid");
+        String token = csrf(session);
+        for (String year : List.of(
+            String.valueOf(Year.now().getValue() + 1),
+            "1899",
+            "2003.5",
+            "\"not-number\"",
+            "null"
+        ))
+        mvc.perform(patch("/api/users/me/profile")
+            .session(session)
+            .header("X-CSRF-TOKEN", token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"nickname\":\"a\",\"birthYear\":" + year + "}"))
+            .andExpect(status().isBadRequest());
+    }
+    @Test
+    void privacyOwnershipAndRankingUseRealMemberIds() throws Exception {
+        Member owner = oauth.processLogin(info("owner"));
+        owner.completeProfile("Owner", 2003);
+        Member viewer = oauth.processLogin(info("viewer"));
+        viewer.completeProfile("Viewer", 2000);
+        members.flush();
+        var ownerSession = session("owner");
+        var viewerSession = session("viewer");
+        String token = csrf(ownerSession);
+        String privateResponse = "";
+        for (boolean visible : List.of(true, false)) {
+            String json = "{\"hikingRecordId\":" + createActivity(ownerSession) + ",\"title\":\"" + (visible ? "Public" : "Private") + "\",\"content\":\"Journal text\",\"isPublic\":" + visible + "}";
+            var result = mvc.perform(post("/api/journals")
+                .session(ownerSession)
+                .header("X-CSRF-TOKEN", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isOk())
+                .andReturn();
+            if (!visible) privateResponse = result.getResponse().getContentAsString();
+        }
+        mvc.perform(get("/api/users/me/journals").session(ownerSession))
+            .andExpect(jsonPath("$.length()").value(2));
+        mvc.perform(get("/api/users/" + owner.getId() + "/journals").session(viewerSession))
+            .andExpect(jsonPath("$.length()").value(1))
+            .andExpect(jsonPath("$[0].title").value("Public"));
+        mvc.perform(get("/api/journals").session(viewerSession))
+            .andExpect(jsonPath("$.length()").value(1));
+        mvc.perform(get("/api/users/" + owner.getId() + "/profile").session(viewerSession))
+            .andExpect(jsonPath("$.userId").value(owner.getId()))
+            .andExpect(jsonPath("$.birthYear").doesNotExist())
+            .andExpect(jsonPath("$.age").doesNotExist())
+            .andExpect(jsonPath("$.email").doesNotExist())
+            .andExpect(jsonPath("$.provider").doesNotExist());
+        mvc.perform(get("/api/rankings").session(viewerSession))
+            .andExpect(jsonPath("$.length()").value(2))
+            .andExpect(jsonPath("$[0].userId").value(owner.getId()))
+            .andExpect(jsonPath("$[0].score").isEmpty());
+        String id = privateResponse.split("\"id\":")[1].split(",")[0];
+        String update = "{\"title\":\"Changed\",\"content\":\"text\",\"isPublic\":true}";
+        mvc.perform(patch("/api/journals/" + id)
+            .session(viewerSession)
+            .header("X-CSRF-TOKEN", csrf(viewerSession))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(update))
+            .andExpect(status().isNotFound());
+        mvc.perform(patch("/api/journals/" + id)
+            .session(ownerSession)
+            .header("X-CSRF-TOKEN", token)
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(update))
+            .andExpect(status().isOk());
+        mvc.perform(get("/api/users/" + owner.getId() + "/journals").session(viewerSession))
+            .andExpect(jsonPath("$.length()").value(2));
+    }
+    @Test
+    void oauthIdentityUsesProviderAndIdRatherThanEmail() {
+        Member google = oauth.processLogin(info("same"));
+        Member kakao = oauth.processLogin(new OAuthUserInfo("kakao", "same", "private@example.com", "Kakao", null));
+        assertNotEquals(google.getId(), kakao.getId());
+        kakao.completeProfile("Chosen nickname", 2003);
+        assertEquals(
+            "Chosen nickname",
+            oauth.processLogin(new OAuthUserInfo("kakao", "same", null, "Changed social nickname", null))
+            .getNickname()
+        );
+    }
+    String createActivity(MockHttpSession session) throws Exception {
+        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T01:00:00Z\",\"endedAt\":\"2020-01-01T02:00:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":true,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        String response = mvc.perform(post("/api/users/me/hiking-records")
+            .session(session).header("X-CSRF-TOKEN", csrf(session))
+            .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return response.split("\"id\":")[1].split(",")[0];
+    }
+    String createJournal(MockHttpSession session, boolean visible) throws Exception {
+        String json = "{\"hikingRecordId\":" + createActivity(session) + ",\"title\":\"Delete test\",\"content\":\"Journal text\",\"isPublic\":" + visible + "}";
+        String response = mvc.perform(post("/api/journals")
+            .session(session)
+            .header("X-CSRF-TOKEN", csrf(session))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(json))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return response.split("\"id\":")[1].split(",")[0];
+    }
+    @Test
+    void journalDetailAllowsOwnerAndPublicReadersButHidesPrivateRecords() throws Exception {
+        Member owner = oauth.processLogin(info("detail-owner"));
+        owner.completeProfile("Owner", 2003);
+        oauth.processLogin(info("detail-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        var author = session("detail-owner");
+        var viewer = session("detail-viewer");
+        for (boolean visible : List.of(true, false)) {
+            String id = createJournal(author, visible);
+            mvc.perform(get("/api/journals/" + id).session(author))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(Long.valueOf(id)))
+            .andExpect(jsonPath("$.userId").value(owner.getId()))
+            .andExpect(jsonPath("$.title").value("Delete test"))
+            .andExpect(jsonPath("$.content").value("Journal text"))
+            .andExpect(jsonPath("$.mountainName").value("\uac00\ub355\uc0b0"))
+            .andExpect(jsonPath("$.hikingDate").value("2020-01-01"))
+            .andExpect(jsonPath("$.isPublic").value(visible));
+            if (visible) mvc.perform(get("/api/journals/" + id).session(viewer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.content").value("Journal text"));
+            else mvc.perform(get("/api/journals/" + id).session(viewer)).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.error").value("request_failed"))
+                .andExpect(jsonPath("$.content").doesNotExist());
+        }
+        mvc.perform(get("/api/journals/999999").session(viewer)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/journals/999999")).andExpect(status().isUnauthorized());
+    }
+    @Test
+    void journalDetailReflectsUpdatesVisibilityAndDeletion() throws Exception {
+        oauth.processLogin(info("detail-update-owner")).completeProfile("Owner", 2003);
+        oauth.processLogin(info("detail-update-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        var author = session("detail-update-owner");
+        var viewer = session("detail-update-viewer");
+        String id = createJournal(author, true);
+        String update = "{\"title\":\"Changed title\",\"content\":\"Full updated content\",\"isPublic\":false}";
+        mvc.perform(patch("/api/journals/" + id)
+            .session(viewer)
+            .header("X-CSRF-TOKEN", csrf(viewer))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(update))
+            .andExpect(status().isNotFound());
+        mvc.perform(patch("/api/journals/" + id)
+            .session(author)
+            .header("X-CSRF-TOKEN", csrf(author))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content(update))
+            .andExpect(status().isOk());
+        mvc.perform(get("/api/journals/" + id).session(author)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.title").value("Changed title"))
+            .andExpect(jsonPath("$.content").value("Full updated content"));
+        mvc.perform(get("/api/journals/" + id).session(viewer)).andExpect(status().isNotFound());
+        mvc.perform(delete("/api/journals/" + id).session(author).header("X-CSRF-TOKEN", csrf(author)))
+            .andExpect(status().isNoContent());
+        mvc.perform(get("/api/journals/" + id).session(author)).andExpect(status().isNotFound());
+        mvc.perform(get("/api/users/me/journals").session(author))
+            .andExpect(jsonPath("$.length()").value(0));
+    }
+    @Test
+    void ownerCanDeletePublicAndPrivateJournalsWithoutDeletingMember() throws Exception {
+        Member owner = oauth.processLogin(info("delete-owner"));
+        owner.completeProfile("Owner", 2003);
+        members.flush();
+        var authenticated = session("delete-owner");
+        for (boolean visible : List.of(true, false)) {
+            String id = createJournal(authenticated, visible);
+            mvc.perform(delete("/api/journals/" + id)
+                .session(authenticated)
+                .header("X-CSRF-TOKEN", csrf(authenticated)))
+                .andExpect(status().isNoContent()).andExpect(content().string(""));
+            entityManager.flush();
+            entityManager.clear();
+            assertEquals(
+                0,
+                jdbc.queryForObject(
+                    "select count(*) from hiking_records where id=?",
+                    Integer.class,
+                    Long.valueOf(id)
+                )
+            );
+            mvc.perform(get("/api/users/me/journals").session(authenticated))
+                .andExpect(jsonPath("$.length()").value(0));
+            mvc.perform(get("/api/journals").session(authenticated))
+                .andExpect(jsonPath("$.length()").value(0));
+            mvc.perform(get("/api/users/me").session(authenticated))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.userId").value(owner.getId()));
+        }
+    }
+    @Test
+    void otherMemberCannotDeletePublicOrPrivateJournal() throws Exception {
+        oauth.processLogin(info("delete-author")).completeProfile("Author", 2003);
+        oauth.processLogin(info("delete-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        var author = session("delete-author");
+        var viewer = session("delete-viewer");
+        for (boolean visible : List.of(true, false)) {
+            String id = createJournal(author, visible);
+            mvc.perform(delete("/api/journals/" + id).session(viewer).header("X-CSRF-TOKEN", csrf(viewer)))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("request_failed"));
+            assertEquals(
+                1,
+                jdbc.queryForObject(
+                    "select count(*) from hiking_records where id=?",
+                    Integer.class,
+                    Long.valueOf(id)
+                )
+            );
+        }
+        mvc.perform(get("/api/users/me/journals").session(author))
+            .andExpect(jsonPath("$.length()").value(2));
+    }
+    @Test
+    void missingJournalReturnsNotFoundAndDeleteRequiresAuthenticationAndCsrf() throws Exception {
+        oauth.processLogin(info("delete-security")).completeProfile("Owner", 2003);
+        members.flush();
+        var authenticated = session("delete-security");
+        mvc.perform(delete("/api/journals/999999")
+            .session(authenticated)
+            .header("X-CSRF-TOKEN", csrf(authenticated)))
+            .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("request_failed"));
+        String id = createJournal(authenticated, true);
+        mvc.perform(delete("/api/journals/" + id).session(authenticated))
+            .andExpect(status().isForbidden());
+        var anonymous = new MockHttpSession();
+        mvc.perform(delete("/api/journals/" + id)
+            .session(anonymous)
+            .header("X-CSRF-TOKEN", csrf(anonymous)))
+            .andExpect(status().isUnauthorized());
+        assertEquals(
+            1,
+            jdbc.queryForObject(
+                "select count(*) from hiking_records where id=?",
+                Integer.class,
+                Long.valueOf(id)
+            )
+        );
+    }
+    @Test
+    void rankingOwnAndPublicProfileUseSameStoredScore() throws Exception {
+        Member m = oauth.processLogin(info("score"));
+        m.completeProfile("Scored", 2003);
+        members.flush();
+        Long id = m.getId();
+        jdbc.update("update members set score=1250 where id=?", id);
+        entityManager.clear();
+        var session = session("score");
+        mvc.perform(get("/api/users/me").session(session)).andExpect(jsonPath("$.score").value(1250));
+        mvc.perform(get("/api/users/" + id + "/profile").session(session))
+            .andExpect(jsonPath("$.score").value(1250));
+        mvc.perform(get("/api/rankings").session(session))
+            .andExpect(jsonPath("$[0].score").value(1250))
+            .andExpect(jsonPath("$[0].userId").value(id));
+    }
+    @Test
+    void journalRequiresOwnedActivityAndCannotBeCreatedTwice() throws Exception {
+        oauth.processLogin(info("activity-owner")).completeProfile("Owner", 2003);
+        oauth.processLogin(info("activity-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        var owner = session("activity-owner");
+        var viewer = session("activity-viewer");
+        String activityId = createActivity(owner);
+        String body = "{\"hikingRecordId\":" + activityId
+            + ",\"mountainName\":\"Forged mountain\",\"hikingDate\":\"2001-01-01\",\"title\":\"Trip\",\"content\":\"Review\",\"isPublic\":false}";
+        mvc.perform(post("/api/journals").session(viewer).header("X-CSRF-TOKEN", csrf(viewer))
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON).content(body.replace(activityId + ",", "999999,")))
+            .andExpect(status().isNotFound());
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"title\":\"Trip\",\"content\":\"Review\",\"isPublic\":false}"))
+            .andExpect(status().isBadRequest());
+        String journal = mvc.perform(post("/api/journals").session(owner)
+            .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.mountainName").value("가덕산"))
+            .andExpect(jsonPath("$.hikingDate").value("2020-01-01"))
+            .andExpect(jsonPath("$.hikingRecordId").value(Long.valueOf(activityId)))
+            .andReturn().getResponse().getContentAsString();
+        String journalId = journal.split("\"id\":")[1].split(",")[0];
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        mvc.perform(get("/api/users/me/hiking-records/" + activityId).session(owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.journalId").value(Long.valueOf(journalId)));
+        mvc.perform(get("/api/users/me/hiking-records/" + activityId).session(viewer))
+            .andExpect(status().isNotFound());
+        mvc.perform(get("/api/users/me/hiking-records").session(viewer))
+            .andExpect(jsonPath("$.length()").value(0));
+        for (String immutableField : List.of("\"hikingRecordId\":" + activityId,
+            "\"mountainName\":\"Changed\"", "\"hikingDate\":\"2021-01-01\"")) {
+            mvc.perform(patch("/api/journals/" + journalId).session(owner)
+                .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"Changed\",\"content\":\"Review\",\"isPublic\":false," + immutableField + "}"))
+                .andExpect(status().isBadRequest());
+        }
+        mvc.perform(patch("/api/journals/" + journalId).session(owner)
+            .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"title\":\"Changed\",\"content\":\"Review\",\"isPublic\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.mountainName").value("가덕산"))
+            .andExpect(jsonPath("$.hikingDate").value("2020-01-01"))
+            .andExpect(jsonPath("$.hikingRecordId").value(Long.valueOf(activityId)));
+        mvc.perform(delete("/api/journals/" + journalId).session(owner)
+            .header("X-CSRF-TOKEN", csrf(owner))).andExpect(status().isNoContent());
+        entityManager.flush();
+        mvc.perform(get("/api/users/me/hiking-records/" + activityId).session(owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.journalId").isEmpty());
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+    }
+    @Test
+    void legacyJournalRemainsReadableEditableAndPrivate() throws Exception {
+        Member member = oauth.processLogin(info("legacy-owner"));
+        member.completeProfile("Legacy", 2003);
+        oauth.processLogin(info("legacy-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        jdbc.update("insert into hiking_records(member_id,mountain_name,title,content,hiking_date,is_public) values(?,?,?,?,?,?)",
+            member.getId(), "Legacy mountain", "Old journal", "Preserved", java.sql.Date.valueOf("2019-01-01"), false);
+        Long id = jdbc.queryForObject("select id from hiking_records where member_id=?", Long.class, member.getId());
+        var owner = session("legacy-owner");
+        var viewer = session("legacy-viewer");
+        mvc.perform(get("/api/journals/" + id).session(owner)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.hikingRecordId").isEmpty())
+            .andExpect(jsonPath("$.mountainName").value("Legacy mountain"));
+        mvc.perform(get("/api/journals/" + id).session(viewer)).andExpect(status().isNotFound());
+        mvc.perform(patch("/api/journals/" + id).session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"title\":\"New title\",\"content\":\"Preserved\",\"isPublic\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.hikingDate").value("2019-01-01"));
+        mvc.perform(get("/api/journals/" + id).session(viewer)).andExpect(status().isOk());
+        mvc.perform(delete("/api/journals/" + id).session(owner).header("X-CSRF-TOKEN", csrf(owner)))
+            .andExpect(status().isNoContent());
+    }
+    @Test
+    void activitySaveIsIdempotentAndValidatesSessionAndCourse() throws Exception {
+        oauth.processLogin(info("retry-owner")).completeProfile("Owner", 2003);
+        members.flush();
+        var owner = session("retry-owner");
+        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T15:30:00Z\",\"endedAt\":\"2020-01-01T16:30:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":false,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        String id = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            String response = mvc.perform(post("/api/users/me/hiking-records").session(owner)
+                .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hikingDate").value("2020-01-02"))
+                .andExpect(jsonPath("$.completed").value(false))
+                .andReturn().getResponse().getContentAsString();
+            String currentId = response.split("\"id\":")[1].split(",")[0];
+            if (id == null) id = currentId; else assertEquals(id, currentId);
+        }
+        mvc.perform(get("/api/users/me/hiking-records").session(owner)).andExpect(jsonPath("$.length()").value(1));
+        for (String badBody : List.of(body.replace("3600000", "3600001"),
+            body.replace("2000,", "-1,"), body.replace("16:30", "14:30"),
+            body.replace("\"mountainId\":1", "\"mountainId\":1,\"courseId\":999999")
+                .replaceAll("[0-9a-f]{8}-[0-9a-f-]{27}", UUID.randomUUID().toString()))) {
+            mvc.perform(post("/api/users/me/hiking-records").session(owner)
+                .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON).content(badBody))
+                .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/users/me/hiking-records").session(owner)
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/users/me/hiking-records")).andExpect(status().isUnauthorized());
+    }
+    @Test
+    void csrfAndAuthenticationRemainRequired() throws Exception {
+        mvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized());
+        oauth.processLogin(info("csrf"));
+        mvc.perform(patch("/api/users/me/profile")
+            .session(session("csrf"))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"nickname\":\"a\",\"birthYear\":2003}"))
+            .andExpect(status().isForbidden());
+    }
+}
