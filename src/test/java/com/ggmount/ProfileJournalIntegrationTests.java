@@ -110,6 +110,82 @@ class ProfileJournalIntegrationTests {
   kakao.completeProfile("Chosen nickname",2003);
   assertEquals("Chosen nickname",oauth.processLogin(new OAuthUserInfo("kakao","same",null,"Changed social nickname",null)).getNickname());
  }
+ String createJournal(MockHttpSession session,boolean visible) throws Exception {
+  String json="{\"mountainName\":\"Mountain\",\"title\":\"Delete test\",\"content\":\"Journal text\",\"hikingDate\":\"2020-01-01\",\"isPublic\":"+visible+"}";
+  String response=mvc.perform(post("/api/journals").session(session).header("X-CSRF-TOKEN",csrf(session)).contentType(MediaType.APPLICATION_JSON).content(json))
+   .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+  return response.split("\"id\":")[1].split(",")[0];
+ }
+ @Test void journalDetailAllowsOwnerAndPublicReadersButHidesPrivateRecords() throws Exception {
+  Member owner=oauth.processLogin(info("detail-owner")); owner.completeProfile("Owner",2003);
+  oauth.processLogin(info("detail-viewer")).completeProfile("Viewer",2000); members.flush();
+  var author=session("detail-owner"); var viewer=session("detail-viewer");
+  for(boolean visible:List.of(true,false)) {
+   String id=createJournal(author,visible);
+   mvc.perform(get("/api/journals/"+id).session(author))
+    .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(Long.valueOf(id)))
+    .andExpect(jsonPath("$.userId").value(owner.getId())).andExpect(jsonPath("$.title").value("Delete test"))
+    .andExpect(jsonPath("$.content").value("Journal text")).andExpect(jsonPath("$.mountainName").value("Mountain"))
+    .andExpect(jsonPath("$.hikingDate").value("2020-01-01")).andExpect(jsonPath("$.isPublic").value(visible));
+   if(visible) mvc.perform(get("/api/journals/"+id).session(viewer)).andExpect(status().isOk()).andExpect(jsonPath("$.content").value("Journal text"));
+   else mvc.perform(get("/api/journals/"+id).session(viewer)).andExpect(status().isNotFound())
+    .andExpect(jsonPath("$.error").value("request_failed")).andExpect(jsonPath("$.content").doesNotExist());
+  }
+  mvc.perform(get("/api/journals/999999").session(viewer)).andExpect(status().isNotFound());
+  mvc.perform(get("/api/journals/999999")).andExpect(status().isUnauthorized());
+ }
+ @Test void journalDetailReflectsUpdatesVisibilityAndDeletion() throws Exception {
+  oauth.processLogin(info("detail-update-owner")).completeProfile("Owner",2003);
+  oauth.processLogin(info("detail-update-viewer")).completeProfile("Viewer",2000); members.flush();
+  var author=session("detail-update-owner"); var viewer=session("detail-update-viewer");
+  String id=createJournal(author,true);
+  String update="{\"mountainName\":\"Changed mountain\",\"title\":\"Changed title\",\"content\":\"Full updated content\",\"hikingDate\":\"2021-01-01\",\"isPublic\":false}";
+  mvc.perform(patch("/api/journals/"+id).session(viewer).header("X-CSRF-TOKEN",csrf(viewer)).contentType(MediaType.APPLICATION_JSON).content(update)).andExpect(status().isNotFound());
+  mvc.perform(patch("/api/journals/"+id).session(author).header("X-CSRF-TOKEN",csrf(author)).contentType(MediaType.APPLICATION_JSON).content(update)).andExpect(status().isOk());
+  mvc.perform(get("/api/journals/"+id).session(author)).andExpect(status().isOk())
+   .andExpect(jsonPath("$.title").value("Changed title")).andExpect(jsonPath("$.content").value("Full updated content"));
+  mvc.perform(get("/api/journals/"+id).session(viewer)).andExpect(status().isNotFound());
+  mvc.perform(delete("/api/journals/"+id).session(author).header("X-CSRF-TOKEN",csrf(author))).andExpect(status().isNoContent());
+  mvc.perform(get("/api/journals/"+id).session(author)).andExpect(status().isNotFound());
+  mvc.perform(get("/api/users/me/journals").session(author)).andExpect(jsonPath("$.length()").value(0));
+ }
+ @Test void ownerCanDeletePublicAndPrivateJournalsWithoutDeletingMember() throws Exception {
+  Member owner=oauth.processLogin(info("delete-owner")); owner.completeProfile("Owner",2003); members.flush();
+  var authenticated=session("delete-owner");
+  for(boolean visible:List.of(true,false)) {
+   String id=createJournal(authenticated,visible);
+   mvc.perform(delete("/api/journals/"+id).session(authenticated).header("X-CSRF-TOKEN",csrf(authenticated)))
+    .andExpect(status().isNoContent()).andExpect(content().string(""));
+   entityManager.flush(); entityManager.clear();
+   assertEquals(0,jdbc.queryForObject("select count(*) from hiking_records where id=?",Integer.class,Long.valueOf(id)));
+   mvc.perform(get("/api/users/me/journals").session(authenticated)).andExpect(jsonPath("$.length()").value(0));
+   mvc.perform(get("/api/journals").session(authenticated)).andExpect(jsonPath("$.length()").value(0));
+   mvc.perform(get("/api/users/me").session(authenticated)).andExpect(status().isOk()).andExpect(jsonPath("$.userId").value(owner.getId()));
+  }
+ }
+ @Test void otherMemberCannotDeletePublicOrPrivateJournal() throws Exception {
+  oauth.processLogin(info("delete-author")).completeProfile("Author",2003);
+  oauth.processLogin(info("delete-viewer")).completeProfile("Viewer",2000); members.flush();
+  var author=session("delete-author"); var viewer=session("delete-viewer");
+  for(boolean visible:List.of(true,false)) {
+   String id=createJournal(author,visible);
+   mvc.perform(delete("/api/journals/"+id).session(viewer).header("X-CSRF-TOKEN",csrf(viewer)))
+    .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("request_failed"));
+   assertEquals(1,jdbc.queryForObject("select count(*) from hiking_records where id=?",Integer.class,Long.valueOf(id)));
+  }
+  mvc.perform(get("/api/users/me/journals").session(author)).andExpect(jsonPath("$.length()").value(2));
+ }
+ @Test void missingJournalReturnsNotFoundAndDeleteRequiresAuthenticationAndCsrf() throws Exception {
+  oauth.processLogin(info("delete-security")).completeProfile("Owner",2003); members.flush();
+  var authenticated=session("delete-security");
+  mvc.perform(delete("/api/journals/999999").session(authenticated).header("X-CSRF-TOKEN",csrf(authenticated)))
+   .andExpect(status().isNotFound()).andExpect(jsonPath("$.error").value("request_failed"));
+  String id=createJournal(authenticated,true);
+  mvc.perform(delete("/api/journals/"+id).session(authenticated)).andExpect(status().isForbidden());
+  var anonymous=new MockHttpSession();
+  mvc.perform(delete("/api/journals/"+id).session(anonymous).header("X-CSRF-TOKEN",csrf(anonymous))).andExpect(status().isUnauthorized());
+  assertEquals(1,jdbc.queryForObject("select count(*) from hiking_records where id=?",Integer.class,Long.valueOf(id)));
+ }
  @Test void rankingOwnAndPublicProfileUseSameStoredScore() throws Exception {
   Member m=oauth.processLogin(info("score")); m.completeProfile("Scored",2003); members.flush();
   Long id=m.getId();
