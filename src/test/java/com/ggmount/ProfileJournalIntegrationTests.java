@@ -166,7 +166,7 @@ class ProfileJournalIntegrationTests {
         String token = csrf(ownerSession);
         String privateResponse = "";
         for (boolean visible : List.of(true, false)) {
-            String json = "{\"mountainName\":\"Mountain\",\"title\":\"" + (visible ? "Public" : "Private") + "\",\"content\":\"Journal text\",\"hikingDate\":\"2020-01-01\",\"isPublic\":" + visible + "}";
+            String json = "{\"hikingRecordId\":" + createActivity(ownerSession) + ",\"title\":\"" + (visible ? "Public" : "Private") + "\",\"content\":\"Journal text\",\"isPublic\":" + visible + "}";
             var result = mvc.perform(post("/api/journals")
                 .session(ownerSession)
                 .header("X-CSRF-TOKEN", token)
@@ -194,7 +194,7 @@ class ProfileJournalIntegrationTests {
             .andExpect(jsonPath("$[0].userId").value(owner.getId()))
             .andExpect(jsonPath("$[0].score").isEmpty());
         String id = privateResponse.split("\"id\":")[1].split(",")[0];
-        String update = "{\"mountainName\":\"Mountain\",\"title\":\"Changed\",\"content\":\"text\",\"hikingDate\":\"2020-01-01\",\"isPublic\":true}";
+        String update = "{\"title\":\"Changed\",\"content\":\"text\",\"isPublic\":true}";
         mvc.perform(patch("/api/journals/" + id)
             .session(viewerSession)
             .header("X-CSRF-TOKEN", csrf(viewerSession))
@@ -222,8 +222,16 @@ class ProfileJournalIntegrationTests {
             .getNickname()
         );
     }
+    String createActivity(MockHttpSession session) throws Exception {
+        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T01:00:00Z\",\"endedAt\":\"2020-01-01T02:00:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":true,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        String response = mvc.perform(post("/api/users/me/hiking-records")
+            .session(session).header("X-CSRF-TOKEN", csrf(session))
+            .contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return response.split("\"id\":")[1].split(",")[0];
+    }
     String createJournal(MockHttpSession session, boolean visible) throws Exception {
-        String json = "{\"mountainName\":\"Mountain\",\"title\":\"Delete test\",\"content\":\"Journal text\",\"hikingDate\":\"2020-01-01\",\"isPublic\":" + visible + "}";
+        String json = "{\"hikingRecordId\":" + createActivity(session) + ",\"title\":\"Delete test\",\"content\":\"Journal text\",\"isPublic\":" + visible + "}";
         String response = mvc.perform(post("/api/journals")
             .session(session)
             .header("X-CSRF-TOKEN", csrf(session))
@@ -247,7 +255,7 @@ class ProfileJournalIntegrationTests {
             .andExpect(jsonPath("$.userId").value(owner.getId()))
             .andExpect(jsonPath("$.title").value("Delete test"))
             .andExpect(jsonPath("$.content").value("Journal text"))
-            .andExpect(jsonPath("$.mountainName").value("Mountain"))
+            .andExpect(jsonPath("$.mountainName").value("\uac00\ub355\uc0b0"))
             .andExpect(jsonPath("$.hikingDate").value("2020-01-01"))
             .andExpect(jsonPath("$.isPublic").value(visible));
             if (visible) mvc.perform(get("/api/journals/" + id).session(viewer))
@@ -268,7 +276,7 @@ class ProfileJournalIntegrationTests {
         var author = session("detail-update-owner");
         var viewer = session("detail-update-viewer");
         String id = createJournal(author, true);
-        String update = "{\"mountainName\":\"Changed mountain\",\"title\":\"Changed title\",\"content\":\"Full updated content\",\"hikingDate\":\"2021-01-01\",\"isPublic\":false}";
+        String update = "{\"title\":\"Changed title\",\"content\":\"Full updated content\",\"isPublic\":false}";
         mvc.perform(patch("/api/journals/" + id)
             .session(viewer)
             .header("X-CSRF-TOKEN", csrf(viewer))
@@ -386,6 +394,114 @@ class ProfileJournalIntegrationTests {
         mvc.perform(get("/api/rankings").session(session))
             .andExpect(jsonPath("$[0].score").value(1250))
             .andExpect(jsonPath("$[0].userId").value(id));
+    }
+    @Test
+    void journalRequiresOwnedActivityAndCannotBeCreatedTwice() throws Exception {
+        oauth.processLogin(info("activity-owner")).completeProfile("Owner", 2003);
+        oauth.processLogin(info("activity-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        var owner = session("activity-owner");
+        var viewer = session("activity-viewer");
+        String activityId = createActivity(owner);
+        String body = "{\"hikingRecordId\":" + activityId
+            + ",\"mountainName\":\"Forged mountain\",\"hikingDate\":\"2001-01-01\",\"title\":\"Trip\",\"content\":\"Review\",\"isPublic\":false}";
+        mvc.perform(post("/api/journals").session(viewer).header("X-CSRF-TOKEN", csrf(viewer))
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNotFound());
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON).content(body.replace(activityId + ",", "999999,")))
+            .andExpect(status().isNotFound());
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"title\":\"Trip\",\"content\":\"Review\",\"isPublic\":false}"))
+            .andExpect(status().isBadRequest());
+        String journal = mvc.perform(post("/api/journals").session(owner)
+            .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON).content(body))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.mountainName").value("가덕산"))
+            .andExpect(jsonPath("$.hikingDate").value("2020-01-01"))
+            .andExpect(jsonPath("$.hikingRecordId").value(Long.valueOf(activityId)))
+            .andReturn().getResponse().getContentAsString();
+        String journalId = journal.split("\"id\":")[1].split(",")[0];
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isConflict());
+        mvc.perform(get("/api/users/me/hiking-records/" + activityId).session(owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.journalId").value(Long.valueOf(journalId)));
+        mvc.perform(get("/api/users/me/hiking-records/" + activityId).session(viewer))
+            .andExpect(status().isNotFound());
+        mvc.perform(get("/api/users/me/hiking-records").session(viewer))
+            .andExpect(jsonPath("$.length()").value(0));
+        for (String immutableField : List.of("\"hikingRecordId\":" + activityId,
+            "\"mountainName\":\"Changed\"", "\"hikingDate\":\"2021-01-01\"")) {
+            mvc.perform(patch("/api/journals/" + journalId).session(owner)
+                .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"title\":\"Changed\",\"content\":\"Review\",\"isPublic\":false," + immutableField + "}"))
+                .andExpect(status().isBadRequest());
+        }
+        mvc.perform(patch("/api/journals/" + journalId).session(owner)
+            .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON)
+            .content("{\"title\":\"Changed\",\"content\":\"Review\",\"isPublic\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.mountainName").value("가덕산"))
+            .andExpect(jsonPath("$.hikingDate").value("2020-01-01"))
+            .andExpect(jsonPath("$.hikingRecordId").value(Long.valueOf(activityId)));
+        mvc.perform(delete("/api/journals/" + journalId).session(owner)
+            .header("X-CSRF-TOKEN", csrf(owner))).andExpect(status().isNoContent());
+        entityManager.flush();
+        mvc.perform(get("/api/users/me/hiking-records/" + activityId).session(owner))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.journalId").isEmpty());
+        mvc.perform(post("/api/journals").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isOk());
+    }
+    @Test
+    void legacyJournalRemainsReadableEditableAndPrivate() throws Exception {
+        Member member = oauth.processLogin(info("legacy-owner"));
+        member.completeProfile("Legacy", 2003);
+        oauth.processLogin(info("legacy-viewer")).completeProfile("Viewer", 2000);
+        members.flush();
+        jdbc.update("insert into hiking_records(member_id,mountain_name,title,content,hiking_date,is_public) values(?,?,?,?,?,?)",
+            member.getId(), "Legacy mountain", "Old journal", "Preserved", java.sql.Date.valueOf("2019-01-01"), false);
+        Long id = jdbc.queryForObject("select id from hiking_records where member_id=?", Long.class, member.getId());
+        var owner = session("legacy-owner");
+        var viewer = session("legacy-viewer");
+        mvc.perform(get("/api/journals/" + id).session(owner)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.hikingRecordId").isEmpty())
+            .andExpect(jsonPath("$.mountainName").value("Legacy mountain"));
+        mvc.perform(get("/api/journals/" + id).session(viewer)).andExpect(status().isNotFound());
+        mvc.perform(patch("/api/journals/" + id).session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"title\":\"New title\",\"content\":\"Preserved\",\"isPublic\":true}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.hikingDate").value("2019-01-01"));
+        mvc.perform(get("/api/journals/" + id).session(viewer)).andExpect(status().isOk());
+        mvc.perform(delete("/api/journals/" + id).session(owner).header("X-CSRF-TOKEN", csrf(owner)))
+            .andExpect(status().isNoContent());
+    }
+    @Test
+    void activitySaveIsIdempotentAndValidatesSessionAndCourse() throws Exception {
+        oauth.processLogin(info("retry-owner")).completeProfile("Owner", 2003);
+        members.flush();
+        var owner = session("retry-owner");
+        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T15:30:00Z\",\"endedAt\":\"2020-01-01T16:30:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":false,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        String id = null;
+        for (int attempt = 0; attempt < 2; attempt++) {
+            String response = mvc.perform(post("/api/users/me/hiking-records").session(owner)
+                .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.hikingDate").value("2020-01-02"))
+                .andExpect(jsonPath("$.completed").value(false))
+                .andReturn().getResponse().getContentAsString();
+            String currentId = response.split("\"id\":")[1].split(",")[0];
+            if (id == null) id = currentId; else assertEquals(id, currentId);
+        }
+        mvc.perform(get("/api/users/me/hiking-records").session(owner)).andExpect(jsonPath("$.length()").value(1));
+        for (String badBody : List.of(body.replace("3600000", "3600001"),
+            body.replace("2000,", "-1,"), body.replace("16:30", "14:30"),
+            body.replace("\"mountainId\":1", "\"mountainId\":1,\"courseId\":999999")
+                .replaceAll("[0-9a-f]{8}-[0-9a-f-]{27}", UUID.randomUUID().toString()))) {
+            mvc.perform(post("/api/users/me/hiking-records").session(owner)
+                .header("X-CSRF-TOKEN", csrf(owner)).contentType(MediaType.APPLICATION_JSON).content(badBody))
+                .andExpect(status().isBadRequest());
+        }
+        mvc.perform(post("/api/users/me/hiking-records").session(owner)
+            .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/users/me/hiking-records")).andExpect(status().isUnauthorized());
     }
     @Test
     void csrfAndAuthenticationRemainRequired() throws Exception {

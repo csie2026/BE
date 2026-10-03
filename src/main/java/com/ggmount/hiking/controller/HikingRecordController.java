@@ -39,15 +39,15 @@ public class HikingRecordController {
         @AuthenticationPrincipal OAuthPrincipal p,
         @Valid @RequestBody HikingRecordRequest r
     ) {
-        return service.save(p, null, r);
+        return service.create(p, r);
     }
     @PatchMapping("/journals/{id}")
     public HikingRecordResponse update(
         @AuthenticationPrincipal OAuthPrincipal p,
         @PathVariable Long id,
-        @Valid @RequestBody HikingRecordRequest r
+        @Valid @RequestBody JournalUpdateRequest r
     ) {
-        return service.save(p, id, r);
+        return service.update(p, id, r);
     }
     @DeleteMapping("/journals/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)

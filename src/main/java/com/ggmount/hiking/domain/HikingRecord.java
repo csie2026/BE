@@ -1,6 +1,7 @@
 package com.ggmount.hiking.domain;
 import com.ggmount.member.domain.Member;
 import com.ggmount.hiking.dto.HikingRecordRequest;
+import com.ggmount.hiking.dto.JournalUpdateRequest;
 import jakarta.persistence.*;
 import lombok.Getter;
 import java.time.LocalDate;
@@ -8,6 +9,10 @@ import java.time.LocalDate;
 @Table(name = "hiking_records")
 @Getter
 public class HikingRecord {
+    // Historical name: this entity is a journal. Null activity is allowed only for legacy rows.
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "hiking_activity_id", unique = true)
+    private HikingActivity activity;
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -27,17 +32,19 @@ public class HikingRecord {
     private boolean publicRecord;
     protected HikingRecord() {
     }
-    public HikingRecord(Member member, HikingRecordRequest r) {
+    public HikingRecord(Member member, HikingActivity activity, HikingRecordRequest r) {
         this.member = member;
-        update(r);
+        this.activity = activity;
+        mountainName = activity.getMountainName();
+        hikingDate = activity.hikingDate();
+        updateContent(r.title(), r.content(), r.isPublic());
     }
-    public void update(HikingRecordRequest r) {
-        mountainName = r.mountainName()
-            .trim();
-        title = r.title()
-            .trim();
-        content = r.content();
-        hikingDate = r.hikingDate();
-        publicRecord = r.isPublic();
+    public void update(JournalUpdateRequest r) {
+        updateContent(r.title(), r.content(), r.isPublic());
+    }
+    private void updateContent(String title, String content, boolean isPublic) {
+        this.title = title.trim();
+        this.content = content;
+        publicRecord = isPublic;
     }
 }
