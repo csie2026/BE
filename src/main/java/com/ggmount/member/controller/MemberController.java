@@ -7,11 +7,30 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
-@RestController @RequestMapping("/api/users")
+@RestController
+@RequestMapping("/api/users")
 public class MemberController {
- private final MemberService service;
- public MemberController(MemberService service) { this.service=service; }
- @GetMapping("/me") public ResponseEntity<MemberResponse> me(@AuthenticationPrincipal OAuthPrincipal p) { return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.me(p)); }
- @PatchMapping("/me/profile") public MemberResponse update(@AuthenticationPrincipal OAuthPrincipal p,@Valid @RequestBody MemberUpdateRequest request) { return service.update(p,request); }
- @GetMapping("/{id}/profile") public PublicMemberResponse profile(@PathVariable Long id) { var m=service.find(id); service.requireComplete(m); return PublicMemberResponse.from(m); }
+    private final MemberService service;
+    public MemberController(MemberService service) {
+        this.service = service;
+    }
+    @GetMapping("/me")
+    public ResponseEntity<MemberResponse> me(@AuthenticationPrincipal OAuthPrincipal p) {
+        return ResponseEntity.ok()
+            .cacheControl(CacheControl.noStore())
+            .body(service.me(p));
+    }
+    @PatchMapping("/me/profile")
+    public MemberResponse update(
+        @AuthenticationPrincipal OAuthPrincipal p,
+        @Valid @RequestBody MemberUpdateRequest request
+    ) {
+        return service.update(p, request);
+    }
+    @GetMapping("/{id}/profile")
+    public PublicMemberResponse profile(@PathVariable Long id) {
+        var m = service.find(id);
+        service.requireComplete(m);
+        return PublicMemberResponse.from(m);
+    }
 }

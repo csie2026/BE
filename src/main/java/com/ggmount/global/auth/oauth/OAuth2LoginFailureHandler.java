@@ -11,8 +11,11 @@ import org.springframework.stereotype.Component;
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 
     @Override
-    public void onAuthenticationFailure(HttpServletRequest request, HttpServletResponse response,
-            AuthenticationException exception) throws IOException {
+    public void onAuthenticationFailure(
+        HttpServletRequest request,
+        HttpServletResponse response,
+        AuthenticationException exception
+    ) throws IOException {
         // 공급자 응답 및 예외 메시지는 클라이언트에 노출하지 않습니다.
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json;charset=UTF-8");

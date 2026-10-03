@@ -8,6 +8,15 @@ import java.time.LocalDateTime;
  * @param sky 하늘상태 1 맑음, 3 구름많음, 4 흐림
  * @param pty 강수형태 0 없음, 1 비, 2 비/눈, 3 눈, 4 소나기
  */
-public record HourForecast(LocalDateTime time, Double temperature, Integer sky, Integer pty,
-                           Integer pop, double precipitationMm, double snowCm, Double windSpeed, Integer humidity) {
+public record HourForecast(
+    LocalDateTime time,
+    Double temperature,
+    Integer sky,
+    Integer pty,
+    Integer pop,
+    double precipitationMm,
+    double snowCm,
+    Double windSpeed,
+    Integer humidity
+) {
 }

@@ -25,7 +25,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         OAuthUserInfo userInfo = mapper.map(provider, user.getAttributes());
         memberService.processLogin(userInfo);
         String nameAttribute = request.getClientRegistration().getProviderDetails()
-                .getUserInfoEndpoint().getUserNameAttributeName();
+        .getUserInfoEndpoint().getUserNameAttributeName();
         return new OAuthPrincipal(user.getAuthorities(), user.getAttributes(), nameAttribute, userInfo);
     }
 }
