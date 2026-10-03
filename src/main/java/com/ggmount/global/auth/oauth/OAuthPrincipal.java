@@ -10,8 +10,13 @@ public class OAuthPrincipal extends DefaultOAuth2User {
 
     private final OAuthUserInfo userInfo;
 
-    public OAuthPrincipal(Collection<? extends GrantedAuthority> authorities,
-            Map<String, Object> attributes, String nameAttributeKey, OAuthUserInfo userInfo) {
+    public OAuthPrincipal(
+        Collection<? extends GrantedAuthority> authorities,
+        Map<String,
+        Object> attributes,
+        String nameAttributeKey,
+        OAuthUserInfo userInfo
+    ) {
         super(authorities, attributes, nameAttributeKey);
         this.userInfo = userInfo;
     }

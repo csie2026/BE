@@ -18,6 +18,6 @@ public class RankingService {
 
     public List<PublicMemberResponse> ranking() {
         return repository.findRanking(PageRequest.of(0, 100)).stream()
-                .map(PublicMemberResponse::from).toList();
+            .map(PublicMemberResponse::from).toList();
     }
 }

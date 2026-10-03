@@ -34,11 +34,16 @@ public class KmaForecastClient {
     }
 
     record KmaResponse(Response response) {
-        record Response(Header header, Body body) { }
-        record Header(String resultCode, String resultMsg) { }
-        record Body(Items items) { }
-        record Items(List<Item> item) { }
-        record Item(String category, String fcstDate, String fcstTime, String fcstValue) { }
+        record Response(Header header, Body body) {
+        }
+        record Header(String resultCode, String resultMsg) {
+        }
+        record Body(Items items) {
+        }
+        record Items(List<Item> item) {
+        }
+        record Item(String category, String fcstDate, String fcstTime, String fcstValue) {
+        }
     }
 
     /** 발표시각(02,05,...,23시)은 발표 10분 뒤부터 조회됩니다. */
@@ -46,7 +51,12 @@ public class KmaForecastClient {
         LocalDateTime t = now.minusMinutes(10);
         int hour = t.getHour();
         int base = hour < 2 ? -1 : ((hour - 2) / 3) * 3 + 2;
-        return base < 0 ? t.toLocalDate().minusDays(1).atTime(23, 0) : t.toLocalDate().atTime(base, 0);
+        return base < 0
+            ? t.toLocalDate()
+            .minusDays(1)
+            .atTime(23, 0)
+            : t.toLocalDate()
+                .atTime(base, 0);
     }
 
     public List<HourForecast> forecast(int nx, int ny, LocalDateTime base) {
@@ -55,18 +65,28 @@ public class KmaForecastClient {
         }
         // 키는 Decoding 키. 템플릿 변수로 넣어야 '+', '/', '='까지 인코딩됩니다.
         URI uri = UriComponentsBuilder.fromUriString(URL)
-                .queryParam("serviceKey", "{key}").queryParam("pageNo", 1).queryParam("numOfRows", 1000)
-                .queryParam("dataType", "JSON").queryParam("base_date", base.format(DATE))
-                .queryParam("base_time", base.format(TIME)).queryParam("nx", nx).queryParam("ny", ny)
-                .encode().buildAndExpand(serviceKey).toUri();
+            .queryParam("serviceKey", "{key}")
+            .queryParam("pageNo", 1)
+            .queryParam("numOfRows", 1000)
+            .queryParam("dataType", "JSON").queryParam("base_date", base.format(DATE))
+            .queryParam("base_time", base.format(TIME))
+            .queryParam("nx", nx)
+            .queryParam("ny", ny)
+            .encode().buildAndExpand(serviceKey).toUri();
         KmaResponse body;
         try {
             body = http.get().uri(uri).retrieve().body(KmaResponse.class);
-        } catch (Exception e) {  // 키 오류 등은 JSON 대신 XML이 와서 파싱에서 실패합니다
+        }
+        catch (Exception e) {
+            // 키 오류 등은 JSON 대신 XML이 와서 파싱에서 실패합니다
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.", e);
         }
-        if (body == null || body.response() == null || !"00".equals(body.response().header().resultCode())
-                || body.response().body() == null) {
+        if (body == null
+            || body.response() == null
+            || !"00".equals(body.response()
+                .header()
+                .resultCode())
+            || body.response().body() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
         }
         return toHours(body.response().body().items().item());
@@ -75,14 +95,27 @@ public class KmaForecastClient {
     static List<HourForecast> toHours(List<KmaResponse.Item> items) {
         Map<LocalDateTime, Map<String, String>> byTime = new TreeMap<>();
         for (KmaResponse.Item it : items) {
-            LocalDateTime t = LocalDate.parse(it.fcstDate(), DATE).atTime(LocalTime.parse(it.fcstTime(), TIME));
-            byTime.computeIfAbsent(t, k -> new java.util.HashMap<>()).put(it.category(), it.fcstValue());
+            LocalDateTime t = LocalDate.parse(it.fcstDate(),
+                DATE).atTime(LocalTime.parse(it.fcstTime(),
+                    TIME));
+            byTime.computeIfAbsent(t, k -> new java.util.HashMap<>())
+                .put(it.category(), it.fcstValue());
         }
         return byTime.entrySet().stream().map(e -> {
             Map<String, String> v = e.getValue();
-            return new HourForecast(e.getKey(), dbl(v.get("TMP")), integer(v.get("SKY")), integer(v.get("PTY")),
-                    integer(v.get("POP")), amount(v.get("PCP")), amount(v.get("SNO")), dbl(v.get("WSD")), integer(v.get("REH")));
-        }).toList();
+            return new HourForecast(
+                e.getKey(),
+                dbl(v.get("TMP")),
+                integer(v.get("SKY")),
+                integer(v.get("PTY")),
+                integer(v.get("POP")),
+                amount(v.get("PCP")),
+                amount(v.get("SNO")),
+                dbl(v.get("WSD")),
+                integer(v.get("REH"))
+            );
+            }
+        ).toList();
     }
 
     /** "강수없음"/"적설없음" → 0, "1mm 미만" → 0.5, "30.0~50.0mm" → 30, "50.0mm 이상" → 50. */
@@ -101,7 +134,8 @@ public class KmaForecastClient {
     private static Double dbl(String s) {
         try {
             return s == null ? null : Double.valueOf(s);
-        } catch (NumberFormatException e) {
+        }
+        catch (NumberFormatException e) {
             return null;
         }
     }

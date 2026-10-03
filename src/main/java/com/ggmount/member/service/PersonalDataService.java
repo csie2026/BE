@@ -16,7 +16,11 @@ public class PersonalDataService {
     private final PersonalDataRepository data;
     private final ImageUploadValidator images;
 
-    public PersonalDataService(MemberService members, PersonalDataRepository data, ImageUploadValidator images) {
+    public PersonalDataService(
+        MemberService members,
+        PersonalDataRepository data,
+        ImageUploadValidator images
+    ) {
         this.members = members;
         this.data = data;
         this.images = images;
@@ -25,7 +29,7 @@ public class PersonalDataService {
     public ImageUploadValidator.ImageData image(OAuthPrincipal principal, String kind, String revision) {
         Long memberId = members.current(principal).getId();
         return data.findImage(memberId, imageKind(kind), revision).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "이미지가 없거나 현재 계정의 이미지 URL이 아닙니다."));
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "이미지가 없거나 현재 계정의 이미지 URL이 아닙니다."));
     }
 
     @Transactional

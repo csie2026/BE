@@ -7,21 +7,43 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.HttpStatus;
-@Service @Transactional(readOnly=true)
+@Service
+@Transactional(readOnly = true)
 public class MemberService {
- private final MemberRepository repository;
- private final com.ggmount.member.repository.PersonalDataRepository personalData;
- public MemberService(MemberRepository repository,com.ggmount.member.repository.PersonalDataRepository personalData) { this.repository=repository; this.personalData=personalData; }
- public MemberResponse me(OAuthPrincipal principal) { return response(current(principal)); }
- private MemberResponse response(Member member) { return MemberResponse.withImages(member,personalData.imageRevisions(member.getId())); }
- public Member current(OAuthPrincipal principal) {
-  if(principal==null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-  var info=principal.getUserInfo();
-  return repository.findByProviderAndProviderId(info.provider(),info.providerId()).orElseThrow(()->new ResponseStatusException(HttpStatus.UNAUTHORIZED));
- }
- public Member find(Long id) { return repository.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND)); }
- @Transactional public MemberResponse update(OAuthPrincipal p,MemberUpdateRequest request) {
-  Member member=current(p); member.completeProfile(request.nickname(),request.birthYear()); return response(member);
- }
- public void requireComplete(Member m) { if(!m.isProfileCompleted()) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"프로필 설정이 필요합니다."); }
+    private final MemberRepository repository;
+    private final com.ggmount.member.repository.PersonalDataRepository personalData;
+    public MemberService(
+        MemberRepository repository,
+        com.ggmount.member.repository.PersonalDataRepository personalData
+    ) {
+        this.repository = repository;
+        this.personalData = personalData;
+    }
+    public MemberResponse me(OAuthPrincipal principal) {
+        return response(current(principal));
+    }
+    private MemberResponse response(Member member) {
+        return MemberResponse.withImages(member, personalData.imageRevisions(member.getId()));
+    }
+    public Member current(OAuthPrincipal principal) {
+        if (principal == null)
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
+        var info = principal.getUserInfo();
+        return repository.findByProviderAndProviderId(info.provider(), info.providerId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
+    }
+    public Member find(Long id) {
+        return repository.findById(id)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+    }
+    @Transactional
+    public MemberResponse update(OAuthPrincipal p, MemberUpdateRequest request) {
+        Member member = current(p);
+        member.completeProfile(request.nickname(), request.birthYear());
+        return response(member);
+    }
+    public void requireComplete(Member m) {
+        if (!m.isProfileCompleted())
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "프로필 설정이 필요합니다.");
+    }
 }

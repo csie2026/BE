@@ -18,14 +18,23 @@ class OAuth2LoginHandlerTests {
     void successReturnsJsonAndClearsSavedRequestAndPreviousError() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
         MockHttpServletResponse response = new MockHttpServletResponse();
-        request.getSession().setAttribute(WebAttributes.AUTHENTICATION_EXCEPTION, "previous failure");
+        request.getSession()
+            .setAttribute(WebAttributes.AUTHENTICATION_EXCEPTION, "previous failure");
         HttpSessionRequestCache cache = new HttpSessionRequestCache();
         cache.saveRequest(request, response);
-        OAuthPrincipal principal = new OAuthPrincipal(List.of(), Map.of("sub", "42"), "sub",
-                new OAuthUserInfo("google", "42", null, null, null));
+        OAuthPrincipal principal = new OAuthPrincipal(
+            List.of(),
+            Map.of("sub", "42"),
+            "sub",
+            new OAuthUserInfo("google", "42", null, null, null)
+        );
 
-        new OAuth2LoginSuccessHandler("http://localhost:5173").onAuthenticationSuccess(request, response,
-                new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "google"));
+        new OAuth2LoginSuccessHandler("http://localhost:5173")
+            .onAuthenticationSuccess(
+                request,
+                response,
+                new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "google")
+            );
 
         assertEquals(302, response.getStatus());
         assertEquals("http://localhost:5173/?oauth=success", response.getRedirectedUrl());
@@ -37,8 +46,12 @@ class OAuth2LoginHandlerTests {
     @Test
     void failureReturnsUnauthorizedWithoutExposingProviderDetails() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
-        new OAuth2LoginFailureHandler().onAuthenticationFailure(new MockHttpServletRequest(), response,
-                new BadCredentialsException("private provider response"));
+        new OAuth2LoginFailureHandler()
+            .onAuthenticationFailure(
+                new MockHttpServletRequest(),
+                response,
+                new BadCredentialsException("private provider response")
+            );
 
         assertEquals(401, response.getStatus());
         assertEquals("{\"error\":\"oauth_login_failed\"}", response.getContentAsString());

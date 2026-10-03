@@ -33,7 +33,8 @@ public class ImageUploadValidator {
                 throw tooLarge();
             }
             return decode(bytes);
-        } catch (IOException e) {
+        }
+        catch (IOException e) {
             throw invalidImage();
         }
     }
@@ -57,9 +58,11 @@ public class ImageUploadValidator {
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 if (width < 1 || height < 1 || width > MAX_SIDE || height > MAX_SIDE
-                        || (long) width * height > MAX_PIXELS) {
-                    throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                            "이미지는 한 변 4096px, 총 1600만 픽셀 이하로 올려주세요.");
+                    ||(long) width * height > MAX_PIXELS) {
+                    throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "이미지는 한 변 4096px, 총 1600만 픽셀 이하로 올려주세요."
+                    );
                 }
                 var decoded = reader.read(0);
                 var output = new ByteArrayOutputStream();
@@ -72,7 +75,8 @@ public class ImageUploadValidator {
                     throw tooLarge();
                 }
                 return new ImageData(output.toByteArray(), png ? "image/png" : "image/jpeg");
-            } finally {
+            }
+            finally {
                 reader.dispose();
             }
         }
