@@ -135,6 +135,7 @@ public final class HikingWeatherRules {
         if (found.isEmpty()) {
             return new Verdict(Level.GOOD, "등산하기 좋은 날씨예요. 즐거운 산행 되세요!", List.of());
         }
+        // 여러 위험 요인이 동시에 있으면 위험도와 우선순위로 대표 문구를 정하고 나머지는 참고 사항으로 제공한다.
         found.sort(Comparator.comparing(Finding::level).reversed().thenComparingInt(Finding::priority));
         List<String> notes = found.stream().skip(1).map(Finding::message).toList();
         return new Verdict(found.getFirst().level(), found.getFirst().message(), notes);

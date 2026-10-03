@@ -19,6 +19,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
     }
 
     @Override
+    // 공급자 사용자 정보를 공통 형식으로 변환해 내부 회원을 생성·갱신한 뒤 세션에서 사용할 principal을 만든다.
     public OAuth2User loadUser(OAuth2UserRequest request) throws OAuth2AuthenticationException {
         OAuth2User user = super.loadUser(request);
         String provider = request.getClientRegistration().getRegistrationId();

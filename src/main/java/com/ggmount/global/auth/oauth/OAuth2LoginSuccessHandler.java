@@ -8,6 +8,7 @@ import org.springframework.security.web.authentication.SimpleUrlAuthenticationSu
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.stereotype.Component;
 
+// 로그인 성공 시 FE로 복귀시켜 회원 상태를 다시 조회하게 한다. 인증 정보는 URL이 아닌 서버 세션에 둔다.
 @Component
 public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
     private final String frontendUrl;

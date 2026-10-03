@@ -10,6 +10,7 @@ import org.springframework.boot.json.JsonParserFactory;
 
 import java.util.List;
 
+// Flyway로 적재된 산·코스를 DB ID로 연결해 제공한다. 경로는 저장된 GeoJSON 좌표 순서를 유지한다.
 @RestController
 public class MountainController {
     private final JdbcTemplate jdbc;
@@ -67,6 +68,7 @@ public class MountainController {
     }
 
     @GetMapping("/api/mountains/{id}/courses")
+    // 산 자체가 없으면 404, 산은 있지만 생성된 코스가 없으면 빈 목록으로 구분한다.
     public List<Course> courses(@PathVariable long id) {
         if (jdbc.queryForObject("select count(*) from mountains where id = ?", Long.class, id) == 0) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "산을 찾을 수 없습니다.");

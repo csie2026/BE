@@ -7,6 +7,7 @@ import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+// 본인 회원 응답과 타인 공개 프로필을 구분하며, 개인정보 노출 범위는 각각의 DTO로 제한한다.
 @RestController
 @RequestMapping("/api/users")
 public class MemberController {

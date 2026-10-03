@@ -92,6 +92,7 @@ public class KmaForecastClient {
         return toHours(body.response().body().items().item());
     }
 
+    // 기상청은 기온·강수 등을 항목별로 반환하므로 같은 예보 시각의 항목을 하나의 시간별 예보로 합친다.
     static List<HourForecast> toHours(List<KmaResponse.Item> items) {
         Map<LocalDateTime, Map<String, String>> byTime = new TreeMap<>();
         for (KmaResponse.Item it : items) {

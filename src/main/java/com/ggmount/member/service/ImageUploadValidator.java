@@ -39,6 +39,8 @@ public class ImageUploadValidator {
         }
     }
 
+    // 확장자나 요청 MIME을 신뢰하지 않고 실제 이미지 형식과 해상도를 확인한다.
+    // 픽셀 수는 디코딩 전에 제한하고, 재인코딩한 이미지 바이트만 저장한다.
     private ImageData decode(byte[] bytes) throws IOException {
         try (var stream = ImageIO.createImageInputStream(new ByteArrayInputStream(bytes))) {
             if (stream == null) {

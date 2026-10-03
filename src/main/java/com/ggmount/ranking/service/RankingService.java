@@ -16,6 +16,7 @@ public class RankingService {
         this.repository = repository;
     }
 
+    // Repository가 정렬한 최대 100명을 공개 DTO로 변환해 본인 전용 회원 정보가 랭킹에 포함되지 않게 한다.
     public List<PublicMemberResponse> ranking() {
         return repository.findRanking(PageRequest.of(0, 100)).stream()
             .map(PublicMemberResponse::from).toList();

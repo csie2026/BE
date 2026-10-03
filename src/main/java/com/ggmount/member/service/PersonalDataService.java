@@ -26,6 +26,7 @@ public class PersonalDataService {
         this.images = images;
     }
 
+    // 현재 회원과 이미지 종류·선택적 revision을 함께 확인해 다른 계정 또는 오래된 URL의 접근을 제한한다.
     public ImageUploadValidator.ImageData image(OAuthPrincipal principal, String kind, String revision) {
         Long memberId = members.current(principal).getId();
         return data.findImage(memberId, imageKind(kind), revision).orElseThrow(() ->
@@ -33,6 +34,7 @@ public class PersonalDataService {
     }
 
     @Transactional
+    // 검증된 이미지 저장과 revision 갱신을 회원 잠금 아래 수행해 동시 업로드의 충돌을 막는다.
     public MemberResponse saveImage(OAuthPrincipal principal, String kind, MultipartFile file) {
         Long memberId = members.current(principal).getId();
         String selectedKind = imageKind(kind);

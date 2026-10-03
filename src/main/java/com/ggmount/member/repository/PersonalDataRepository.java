@@ -56,6 +56,7 @@ public class PersonalDataRepository {
         ).stream().findFirst();
     }
 
+    // 매 저장마다 새 revision을 발급해 교체 전 URL이 새 이미지의 식별자로 재사용되지 않게 한다.
     public void saveImage(Long memberId, String kind, ImageData image) {
         String revision = UUID.randomUUID().toString();
         int changed = jdbc.update(
