@@ -9,7 +9,8 @@ public record HikingRecordResponse(
     String title,
     String content,
     LocalDate hikingDate,
-    boolean isPublic
+    boolean isPublic,
+    Long hikingRecordId
 ) {
     public static HikingRecordResponse from(HikingRecord r) {
         return new HikingRecordResponse(
@@ -20,7 +21,8 @@ public record HikingRecordResponse(
             r.getTitle(),
             r.getContent(),
             r.getHikingDate(),
-            r.isPublicRecord()
+            r.isPublicRecord(),
+            r.getActivity() == null ? null : r.getActivity().getId()
         );
     }
 }

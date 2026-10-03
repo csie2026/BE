@@ -3,6 +3,7 @@ import com.ggmount.global.auth.oauth.OAuthPrincipal;
 import com.ggmount.hiking.domain.HikingRecord;
 import com.ggmount.hiking.dto.*;
 import com.ggmount.hiking.repository.HikingRecordRepository;
+import com.ggmount.hiking.repository.HikingActivityRepository;
 import com.ggmount.member.service.MemberService;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -14,9 +15,11 @@ import java.util.List;
 public class HikingRecordService {
     private final HikingRecordRepository repository;
     private final MemberService members;
-    public HikingRecordService(HikingRecordRepository repository, MemberService members) {
+    private final HikingActivityRepository activities;
+    public HikingRecordService(HikingRecordRepository repository, MemberService members, HikingActivityRepository activities) {
         this.repository = repository;
         this.members = members;
+        this.activities = activities;
     }
     public List<HikingRecordResponse> mine(OAuthPrincipal p) {
         return repository.findByMemberIdOrderByHikingDateDescIdDesc(members.current(p).getId())
@@ -48,15 +51,23 @@ public class HikingRecordService {
     }
     @Transactional
     // 신규 작성은 현재 회원에 연결하고, 수정은 일지 ID와 현재 회원 ID를 함께 조회해 소유권을 검증한다.
-    public HikingRecordResponse save(OAuthPrincipal p, Long id, HikingRecordRequest request) {
+    public HikingRecordResponse create(OAuthPrincipal p, HikingRecordRequest request) {
         var member = members.current(p);
         members.requireComplete(member);
-        HikingRecord record = id == null
-            ? new HikingRecord(member, request)
-            : repository.findByIdAndMemberId(id, member.getId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        record.update(request);
-        return HikingRecordResponse.from(repository.save(record));
+        var activity = activities.lockOwned(request.hikingRecordId(), member.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "등산기록을 찾을 수 없습니다."));
+        if (repository.existsByActivityId(activity.getId()))
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 등산일지를 작성한 기록입니다.");
+        return HikingRecordResponse.from(repository.saveAndFlush(new HikingRecord(member, activity, request)));
+    }
+    @Transactional
+    public HikingRecordResponse update(OAuthPrincipal p, Long id, JournalUpdateRequest request) {
+        var member = members.current(p);
+        members.requireComplete(member);
+        var journal = repository.findByIdAndMemberId(id, member.getId())
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        journal.update(request);
+        return HikingRecordResponse.from(journal);
     }
     @Transactional
     // 삭제도 일지와 회원 ID를 함께 확인하므로 FE의 버튼 표시 여부와 무관하게 작성자만 삭제할 수 있다.

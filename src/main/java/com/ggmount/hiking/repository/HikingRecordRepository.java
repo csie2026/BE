@@ -4,6 +4,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
 public interface HikingRecordRepository extends JpaRepository<HikingRecord, Long> {
+    Optional<HikingRecord> findByActivityId(Long activityId);
+    boolean existsByActivityId(Long activityId);
     List<HikingRecord> findByMemberIdOrderByHikingDateDescIdDesc(Long id);
     List<HikingRecord> findByMemberIdAndPublicRecordTrueOrderByHikingDateDescIdDesc(Long id);
     List<HikingRecord> findTop100ByPublicRecordTrueOrderByHikingDateDescIdDesc();
