@@ -36,6 +36,8 @@ public class WeatherService {
         this.kma = kma;
     }
 
+    // 같은 예보 격자의 산은 최신 발표분을 공유해 외부 API 중복 호출을 줄인다.
+    // 발표 시각이 바뀌면 같은 격자라도 새 예보를 조회한다.
     public WeatherResponse weather(long mountainId) {
         Mountain m = jdbc.query(
             "select id, name, grid_nx, grid_ny from mountains where id = ?",
@@ -61,6 +63,7 @@ public class WeatherService {
         return build(m, c.base(), c.hours(), now);
     }
 
+    // 이미 지난 예보를 제외하고 서울 시간의 산행 시간대만 일별로 묶어 적합도 규칙에 전달한다.
     static WeatherResponse build(
         Mountain m,
         LocalDateTime base,

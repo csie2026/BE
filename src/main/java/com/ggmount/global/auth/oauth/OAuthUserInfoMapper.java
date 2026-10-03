@@ -8,6 +8,8 @@ import org.springframework.stereotype.Component;
 @Component
 public class OAuthUserInfoMapper {
 
+    // Google의 평면 응답과 Kakao의 중첩 응답을 공통 회원 정보로 맞춘다.
+    // 동의하지 않은 선택 정보는 없을 수 있지만 공급자의 사용자 ID는 계정 식별을 위해 필수다.
     public OAuthUserInfo map(String provider, Map<String, Object> attributes) {
         return switch (provider) {
             case "google" -> new OAuthUserInfo(

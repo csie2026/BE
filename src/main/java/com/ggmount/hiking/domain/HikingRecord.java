@@ -23,6 +23,7 @@ public class HikingRecord {
     @Column(nullable = false)
     private LocalDate hikingDate;
     @Column(name = "is_public", nullable = false)
+    // 공개 피드와 타인 조회의 기준이며, 비공개여도 작성자는 본인 목록과 상세에서 조회할 수 있다.
     private boolean publicRecord;
     protected HikingRecord() {
     }

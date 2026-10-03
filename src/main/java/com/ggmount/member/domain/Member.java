@@ -17,6 +17,7 @@ public class Member {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(nullable = false)
+    // 내부 회원 ID와 별개인 OAuth 계정 식별자이며 providerId와 함께 유일성을 갖는다.
     private String provider;
     @Column(name = "provider_id", nullable = false)
     private String providerId;
@@ -27,6 +28,7 @@ public class Member {
     @Column(length = 2048)
     private String profileImageUrl;
     @Column(nullable = false)
+    // 최초 OAuth 로그인만으로는 완료되지 않으며 사용자가 닉네임·출생연도를 저장해야 활성화된다.
     private boolean profileCompleted;
     // Null means no ranking score has been calculated yet.
     private Long score;

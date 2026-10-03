@@ -7,6 +7,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.authentication.AuthenticationFailureHandler;
 import org.springframework.stereotype.Component;
 
+// 로그인 실패 응답은 최소 정보만 전달해 외부 공급자 응답이나 내부 예외 정보가 노출되지 않게 한다.
 @Component
 public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
 

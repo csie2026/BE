@@ -17,6 +17,7 @@ public record MemberResponse(
         return withImages(member, Map.of());
     }
 
+    // 본인 응답은 업로드 이미지의 revision URL을 우선하고, 없으면 OAuth 프로필 이미지를 사용한다.
     public static MemberResponse withImages(Member member, Map<String, String> revisions) {
         String profile = imageUrl("profile", revisions.get("profile"));
         return new MemberResponse(

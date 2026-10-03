@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+// 공개 피드·본인 목록·상세·작성·수정·삭제를 연결하고, 공개 여부와 소유권 정책은 서비스가 판단한다.
 @RestController
 @RequestMapping("/api")
 public class HikingRecordController {

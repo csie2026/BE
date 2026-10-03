@@ -11,6 +11,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+// 이미지 소유자는 경로의 ID가 아닌 현재 세션으로 결정한다.
+// 캐시 금지와 nosniff 응답으로 계정 전환 시 개인 이미지 재사용과 형식 오인을 줄인다.
 @RestController
 @RequestMapping("/api/users/me/images")
 public class PersonalDataController {

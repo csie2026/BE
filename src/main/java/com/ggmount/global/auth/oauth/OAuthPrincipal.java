@@ -26,6 +26,7 @@ public class OAuthPrincipal extends DefaultOAuth2User {
     }
 
     @Override
+    // 공급자 이름을 함께 포함해 서로 다른 OAuth 공급자의 같은 사용자 ID가 충돌하지 않게 한다.
     public String getName() {
         return userInfo.provider() + ":" + userInfo.providerId();
     }
