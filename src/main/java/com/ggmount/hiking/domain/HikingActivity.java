@@ -28,6 +28,9 @@ public class HikingActivity {
     @Column(nullable = false) private boolean completed;
     @Column(nullable = false, length = 36) private String clientRequestId;
 
+    @Column(nullable = false) private boolean gpsRecorded;
+    @Column(length = 64) private String gpsEvidenceHash;
+
     protected HikingActivity() {}
     public HikingActivity(Member member, String mountainName, HikingActivityRequest r) {
         this.member = member;
@@ -40,6 +43,18 @@ public class HikingActivity {
         elapsedMs = r.elapsedMs();
         completed = r.completed();
         clientRequestId = r.clientRequestId();
+        gpsRecorded = r.gpsEvidence() != null;
+        gpsEvidenceHash = evidenceHash(r);
+    }
+    // Only a canonical fingerprint is persisted: no precise GPS coordinates in the activity table.
+    public static String evidenceHash(HikingActivityRequest request) {
+        var e = request.gpsEvidence();
+        if (e == null) return null;
+        String canonical = e.latitude() + ":" + e.longitude() + ":" + e.accuracyMeters() + ":" + e.recordedAt();
+        try {
+            return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(canonical.getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        } catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
     public LocalDate hikingDate() {
         return startedAt.atZone(ZoneId.of("Asia/Seoul")).toLocalDate();

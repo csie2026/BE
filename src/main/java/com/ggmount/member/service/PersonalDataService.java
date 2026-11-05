@@ -33,6 +33,17 @@ public class PersonalDataService {
             new ResponseStatusException(HttpStatus.NOT_FOUND, "이미지가 없거나 현재 계정의 이미지 URL이 아닙니다."));
     }
 
+    // Only uploaded profile images are shared with authenticated public-profile readers.
+    // Background images and all modification routes remain owner-only.
+    public ImageUploadValidator.ImageData publicProfileImage(long memberId, String revision) {
+        var target = members.find(memberId);
+        members.requireComplete(target);
+        if (revision == null || revision.isBlank())
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "프로필 사진을 찾을 수 없습니다.");
+        return data.findImage(memberId, "profile", revision).orElseThrow(() ->
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "프로필 사진이 변경되었거나 삭제되었습니다."));
+    }
+
     @Transactional
     // 검증된 이미지 저장과 revision 갱신을 회원 잠금 아래 수행해 동시 업로드의 충돌을 막는다.
     public MemberResponse saveImage(OAuthPrincipal principal, String kind, MultipartFile file) {

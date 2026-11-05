@@ -4,6 +4,7 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import java.time.Year;
 @Entity
+@org.hibernate.annotations.DynamicUpdate
 @Table(
     name = "members",
     uniqueConstraints = @UniqueConstraint(columnNames = {
@@ -52,6 +53,10 @@ public class Member {
         this.nickname = nickname.trim();
         this.birthYear = birthYear;
         profileCompleted = true;
+    }
+    public void replaceHikingScore(long points) {
+        if (points < 0) throw new IllegalArgumentException("점수는 음수일 수 없습니다.");
+        score = points;
     }
     public Integer age() {
         return birthYear == null ? null : Year.now().getValue() - birthYear + 1;

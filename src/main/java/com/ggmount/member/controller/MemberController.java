@@ -29,9 +29,7 @@ public class MemberController {
         return service.update(p, request);
     }
     @GetMapping("/{id}/profile")
-    public PublicMemberResponse profile(@PathVariable Long id) {
-        var m = service.find(id);
-        service.requireComplete(m);
-        return PublicMemberResponse.from(m);
+    public ResponseEntity<PublicMemberResponse> profile(@PathVariable Long id) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.publicProfile(id));
     }
 }

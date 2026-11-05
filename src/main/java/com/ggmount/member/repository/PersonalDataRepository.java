@@ -92,4 +92,14 @@ public class PersonalDataRepository {
             kind
         );
     }
+
+    // Ranking needs revision metadata only, never 100 image payloads or per-row queries.
+    public Map<Long, String> profileRevisions(java.util.Collection<Long> memberIds) {
+        Map<Long, String> revisions = new HashMap<>();
+        if (memberIds.isEmpty()) return revisions;
+        String placeholders = String.join(",", java.util.Collections.nCopies(memberIds.size(), "?"));
+        jdbc.query("SELECT member_id, revision FROM member_personal_images WHERE kind='profile' AND member_id IN (" + placeholders + ")",
+            (org.springframework.jdbc.core.RowCallbackHandler) rs -> revisions.put(rs.getLong(1), rs.getString(2)), memberIds.toArray());
+        return revisions;
+    }
 }

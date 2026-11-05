@@ -19,13 +19,14 @@ public class HikingActivityService {
     private final HikingRecordRepository journals;
     private final MemberService members;
     private final JdbcTemplate jdbc;
+    private final HikingScoreService scores;
     public HikingActivityService(HikingActivityRepository activities, HikingRecordRepository journals,
-        MemberService members, JdbcTemplate jdbc) {
-        this.activities = activities; this.journals = journals; this.members = members; this.jdbc = jdbc;
+        MemberService members, JdbcTemplate jdbc, HikingScoreService scores) {
+        this.activities = activities; this.journals = journals; this.members = members; this.jdbc = jdbc; this.scores = scores;
     }
     private HikingActivityResponse response(HikingActivity a) {
         return HikingActivityResponse.from(a, journals.findByActivityId(a.getId())
-            .map(com.ggmount.hiking.domain.HikingRecord::getId).orElse(null));
+            .map(com.ggmount.hiking.domain.HikingRecord::getId).orElse(null), scores.activityScore(a.getId()));
     }
     public List<HikingActivityResponse> mine(OAuthPrincipal p) {
         return activities.findByMemberIdOrderByStartedAtDescIdDesc(members.current(p).getId())
@@ -36,19 +37,28 @@ public class HikingActivityService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND)));
     }
     @Transactional
+    public ScoreSummaryResponse recalculate(OAuthPrincipal p) {
+        var member = members.current(p);
+        members.requireComplete(member);
+        scores.lock(member);
+        return scores.rebuildLocked(member);
+    }
+    @Transactional
     public HikingActivityResponse create(OAuthPrincipal p, HikingActivityRequest r) {
         var member = members.current(p);
         members.requireComplete(member);
         // Serialize retries from the same account before checking the unique request key.
-        jdbc.queryForObject("select id from members where id=? for update", Long.class, member.getId());
+        scores.lock(member);
         var existing = activities.findByMemberIdAndClientRequestId(member.getId(), r.clientRequestId());
         if (existing.isPresent()) {
             var a = existing.get();
             if (!a.getMountainId().equals(r.mountainId()) || !Objects.equals(a.getCourseId(), r.courseId())
                 || !a.getStartedAt().equals(r.startedAt()) || !a.getEndedAt().equals(r.endedAt())
                 || Double.compare(a.getDistanceMeters(), r.distanceMeters()) != 0
-                || a.getElapsedMs() != r.elapsedMs() || a.isCompleted() != r.completed())
+                || a.getElapsedMs() != r.elapsedMs() || a.isCompleted() != r.completed()
+                || !Objects.equals(a.getGpsEvidenceHash(), HikingActivity.evidenceHash(r)))
                 throw new ResponseStatusException(HttpStatus.CONFLICT, "다른 산행에 사용된 저장 요청 ID입니다.");
+            scores.rebuildLocked(member);
             return response(a);
         }
         String mountainName = jdbc.query("select name from mountains where id=?",
@@ -58,7 +68,9 @@ public class HikingActivityService {
             "select count(*) from courses where id=? and mountain_id=?", Long.class,
             r.courseId(), r.mountainId()) == 0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "산과 코스가 일치하지 않습니다.");
-        // Session metrics are client reported, not server-verified summit proof or ranking input.
-        return response(activities.saveAndFlush(new HikingActivity(member, mountainName, r)));
+        // GPS evidence is client reported too: score eligibility is not physical summit attestation.
+        var activity = activities.saveAndFlush(new HikingActivity(member, mountainName, r));
+        scores.rebuildLocked(member);
+        return response(activity);
     }
 }

@@ -16,10 +16,12 @@ public class HikingRecordService {
     private final HikingRecordRepository repository;
     private final MemberService members;
     private final HikingActivityRepository activities;
-    public HikingRecordService(HikingRecordRepository repository, MemberService members, HikingActivityRepository activities) {
+    private final HikingScoreService scores;
+    public HikingRecordService(HikingRecordRepository repository, MemberService members, HikingActivityRepository activities, HikingScoreService scores) {
         this.repository = repository;
         this.members = members;
         this.activities = activities;
+        this.scores = scores;
     }
     public List<HikingRecordResponse> mine(OAuthPrincipal p) {
         return repository.findByMemberIdOrderByHikingDateDescIdDesc(members.current(p).getId())
@@ -54,19 +56,25 @@ public class HikingRecordService {
     public HikingRecordResponse create(OAuthPrincipal p, HikingRecordRequest request) {
         var member = members.current(p);
         members.requireComplete(member);
+        scores.lock(member);
         var activity = activities.lockOwned(request.hikingRecordId(), member.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "등산기록을 찾을 수 없습니다."));
         if (repository.existsByActivityId(activity.getId()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 등산일지를 작성한 기록입니다.");
-        return HikingRecordResponse.from(repository.saveAndFlush(new HikingRecord(member, activity, request)));
+        var journal = repository.saveAndFlush(new HikingRecord(member, activity, request));
+        scores.rebuildLocked(member);
+        return HikingRecordResponse.from(journal);
     }
     @Transactional
     public HikingRecordResponse update(OAuthPrincipal p, Long id, JournalUpdateRequest request) {
         var member = members.current(p);
         members.requireComplete(member);
+        scores.lock(member);
         var journal = repository.findByIdAndMemberId(id, member.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         journal.update(request);
+        repository.flush();
+        scores.rebuildLocked(member);
         return HikingRecordResponse.from(journal);
     }
     @Transactional
@@ -74,8 +82,11 @@ public class HikingRecordService {
     public void delete(OAuthPrincipal p, Long id) {
         var member = members.current(p);
         members.requireComplete(member);
+        scores.lock(member);
         var record = repository.findByIdAndMemberId(id, member.getId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         repository.delete(record);
+        repository.flush();
+        scores.rebuildLocked(member);
     }
 }

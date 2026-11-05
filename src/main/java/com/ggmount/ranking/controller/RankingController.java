@@ -6,6 +6,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.CacheControl;
+import com.ggmount.ranking.dto.RankingSummary;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.ggmount.global.auth.oauth.OAuthPrincipal;
 
 // 로그인한 사용자가 열람하는 랭킹이며, 반환되는 회원 정보는 공개 프로필 범위로 제한한다.
 @RestController
@@ -18,7 +23,14 @@ public class RankingController {
     }
 
     @GetMapping
-    public List<PublicMemberResponse> ranking() {
-        return service.ranking();
+    public ResponseEntity<List<PublicMemberResponse>> ranking() {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.ranking());
+    }
+
+    @GetMapping("/summary")
+    public ResponseEntity<RankingSummary> summary(
+        @AuthenticationPrincipal OAuthPrincipal principal) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+            .body(service.summary(principal));
     }
 }

@@ -21,6 +21,10 @@ public class HikingActivityController {
     public HikingActivityResponse detail(@AuthenticationPrincipal OAuthPrincipal p, @PathVariable Long id) {
         return service.detail(p, id);
     }
+    @PostMapping("/recalculate-score")
+    public ScoreSummaryResponse recalculate(@AuthenticationPrincipal OAuthPrincipal p) {
+        return service.recalculate(p);
+    }
     @PostMapping
     public HikingActivityResponse create(@AuthenticationPrincipal OAuthPrincipal p,
         @Valid @RequestBody HikingActivityRequest r) { return service.create(p, r); }

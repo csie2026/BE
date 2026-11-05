@@ -33,6 +33,12 @@ public class MemberService {
         return repository.findByProviderAndProviderId(info.provider(), info.providerId())
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
+    public PublicMemberResponse publicProfile(Long id) {
+        Member member = find(id);
+        requireComplete(member);
+        String revision = personalData.profileRevisions(java.util.List.of(id)).get(id);
+        return PublicMemberResponse.withImage(member, revision);
+    }
     public Member find(Long id) {
         return repository.findById(id)
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));

@@ -192,7 +192,8 @@ class ProfileJournalIntegrationTests {
         mvc.perform(get("/api/rankings").session(viewerSession))
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[0].userId").value(owner.getId()))
-            .andExpect(jsonPath("$[0].score").isEmpty());
+            // The linked public journal grants the mountain bonus; the legacy GPS summary grants no visit points.
+            .andExpect(jsonPath("$[0].score").value(50));
         String id = privateResponse.split("\"id\":")[1].split(",")[0];
         String update = "{\"title\":\"Changed\",\"content\":\"text\",\"isPublic\":true}";
         mvc.perform(patch("/api/journals/" + id)
