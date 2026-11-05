@@ -39,11 +39,15 @@ public class HikingActivityService {
     public HikingActivityResponse create(OAuthPrincipal p, HikingActivityRequest r) {
         var member = members.current(p);
         members.requireComplete(member);
+        r = r.normalizedForStorage();
         // Serialize retries from the same account before checking the unique request key.
         jdbc.queryForObject("select id from members where id=? for update", Long.class, member.getId());
-        var existing = activities.findByMemberIdAndClientRequestId(member.getId(), r.clientRequestId());
-        if (existing.isPresent()) {
-            var a = existing.get();
+        var existing = activities.findAllByMemberIdAndClientRequestIdIgnoreCase(member.getId(), r.clientRequestId());
+        // Legacy case variants must be resolved explicitly, never picked or merged silently.
+        if (existing.size() > 1)
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "저장 요청 ID가 중복된 기존 산행이 있습니다.");
+        if (!existing.isEmpty()) {
+            var a = existing.getFirst();
             if (!a.getMountainId().equals(r.mountainId()) || !Objects.equals(a.getCourseId(), r.courseId())
                 || !a.getStartedAt().equals(r.startedAt()) || !a.getEndedAt().equals(r.endedAt())
                 || Double.compare(a.getDistanceMeters(), r.distanceMeters()) != 0
