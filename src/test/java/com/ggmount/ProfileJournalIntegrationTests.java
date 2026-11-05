@@ -222,8 +222,11 @@ class ProfileJournalIntegrationTests {
             .getNickname()
         );
     }
+    private int activitySequence;
     String createActivity(MockHttpSession session) throws Exception {
-        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T01:00:00Z\",\"endedAt\":\"2020-01-01T02:00:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":true,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        var start = java.time.Instant.parse("2020-01-01T01:00:00Z").plusSeconds(activitySequence++);
+        String body = "{\"mountainId\":1,\"startedAt\":\"" + start + "\",\"endedAt\":\"" + start.plusSeconds(3600)
+            + "\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":true,\"gpsSegments\":[],\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
         String response = mvc.perform(post("/api/users/me/hiking-records")
             .session(session).header("X-CSRF-TOKEN", csrf(session))
             .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -479,7 +482,7 @@ class ProfileJournalIntegrationTests {
         oauth.processLogin(info("retry-owner")).completeProfile("Owner", 2003);
         members.flush();
         var owner = session("retry-owner");
-        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T15:30:00Z\",\"endedAt\":\"2020-01-01T16:30:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":false,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T15:30:00Z\",\"endedAt\":\"2020-01-01T16:30:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":false,\"gpsSegments\":[],\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
         String id = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             String response = mvc.perform(post("/api/users/me/hiking-records").session(owner)

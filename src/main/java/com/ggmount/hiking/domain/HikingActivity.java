@@ -27,9 +27,13 @@ public class HikingActivity {
     @Column(nullable = false) private long elapsedMs;
     @Column(nullable = false) private boolean completed;
     @Column(nullable = false, length = 36) private String clientRequestId;
+    private Short gpsValidationVersion;
+    private Short requestFingerprintVersion;
+    @Column(length = 64) private String requestFingerprint;
 
     protected HikingActivity() {}
-    public HikingActivity(Member member, String mountainName, HikingActivityRequest r) {
+    public HikingActivity(Member member, String mountainName, HikingActivityRequest r,
+        boolean serverCompleted, String fingerprint) {
         this.member = member;
         this.mountainName = mountainName;
         mountainId = r.mountainId();
@@ -38,8 +42,11 @@ public class HikingActivity {
         endedAt = r.endedAt();
         distanceMeters = r.distanceMeters();
         elapsedMs = r.elapsedMs();
-        completed = r.completed();
+        completed = serverCompleted;
         clientRequestId = r.clientRequestId();
+        gpsValidationVersion = com.ggmount.hiking.service.GpsEvidence.VALIDATION_VERSION;
+        requestFingerprintVersion = com.ggmount.hiking.service.HikingRequestFingerprint.VERSION;
+        requestFingerprint = fingerprint;
     }
     public LocalDate hikingDate() {
         return startedAt.atZone(ZoneId.of("Asia/Seoul")).toLocalDate();

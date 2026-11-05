@@ -4,6 +4,7 @@ import jakarta.validation.constraints.*;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.Locale;
+import java.util.List;
 
 public record HikingActivityRequest(
     @NotNull @Positive Long mountainId,
@@ -13,13 +14,18 @@ public record HikingActivityRequest(
     @NotNull @PositiveOrZero Double distanceMeters,
     @NotNull @PositiveOrZero Long elapsedMs,
     @NotNull Boolean completed,
-    @NotNull @Pattern(regexp = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") String clientRequestId
+    @NotNull @Pattern(regexp = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") String clientRequestId,
+    // Required by the service for new activities, optional for legacy UUID retries.
+    List<List<GpsPointRequest>> gpsSegments
 ) {
+    // Framework diagnostic logging must not print GPS evidence or request contents.
+    @Override public String toString() { return "HikingActivityRequest[redacted]"; }
+
     // Called after request validation, so rounding cannot hide invalid input.
     public HikingActivityRequest normalizedForStorage() {
         return new HikingActivityRequest(mountainId, courseId, postgresPrecision(startedAt),
             postgresPrecision(endedAt), distanceMeters, elapsedMs, completed,
-            clientRequestId.toLowerCase(Locale.ROOT));
+            clientRequestId.toLowerCase(Locale.ROOT), gpsSegments);
     }
 
     private static Instant postgresPrecision(Instant value) {

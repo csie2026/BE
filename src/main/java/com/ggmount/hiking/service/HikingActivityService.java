@@ -39,30 +39,44 @@ public class HikingActivityService {
     public HikingActivityResponse create(OAuthPrincipal p, HikingActivityRequest r) {
         var member = members.current(p);
         members.requireComplete(member);
+        var raw = r;
         r = r.normalizedForStorage();
         // Serialize retries from the same account before checking the unique request key.
         jdbc.queryForObject("select id from members where id=? for update", Long.class, member.getId());
         var existing = activities.findAllByMemberIdAndClientRequestIdIgnoreCase(member.getId(), r.clientRequestId());
         // Legacy case variants must be resolved explicitly, never picked or merged silently.
         if (existing.size() > 1)
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "저장 요청 ID가 중복된 기존 산행이 있습니다.");
+            throw HikingActivityConflict.request();
         if (!existing.isEmpty()) {
             var a = existing.getFirst();
+            if (a.getGpsValidationVersion() != null) {
+                if (raw.gpsSegments() == null) throw HikingActivityConflict.request();
+                GpsEvidence.validate(raw);
+                if (!Objects.equals(a.getRequestFingerprintVersion(), HikingRequestFingerprint.VERSION)
+                    || !Objects.equals(a.getRequestFingerprint(), HikingRequestFingerprint.of(r)))
+                    throw HikingActivityConflict.request();
+                return response(a);
+            }
             if (!a.getMountainId().equals(r.mountainId()) || !Objects.equals(a.getCourseId(), r.courseId())
                 || !a.getStartedAt().equals(r.startedAt()) || !a.getEndedAt().equals(r.endedAt())
                 || Double.compare(a.getDistanceMeters(), r.distanceMeters()) != 0
                 || a.getElapsedMs() != r.elapsedMs() || a.isCompleted() != r.completed())
-                throw new ResponseStatusException(HttpStatus.CONFLICT, "다른 산행에 사용된 저장 요청 ID입니다.");
+                throw HikingActivityConflict.request();
             return response(a);
         }
-        String mountainName = jdbc.query("select name from mountains where id=?",
-            (rs, i) -> rs.getString(1), r.mountainId()).stream().findFirst()
+        GpsEvidence.validate(raw);
+        var mountain = jdbc.query("select name,lat,lng from mountains where id=?",
+            (rs, i) -> new Summit(rs.getString(1), rs.getDouble(2), rs.getDouble(3)), r.mountainId()).stream().findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "산을 찾을 수 없습니다."));
         if (r.courseId() != null && jdbc.queryForObject(
             "select count(*) from courses where id=? and mountain_id=?", Long.class,
             r.courseId(), r.mountainId()) == 0)
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "산과 코스가 일치하지 않습니다.");
-        // Session metrics are client reported, not server-verified summit proof or ranking input.
-        return response(activities.saveAndFlush(new HikingActivity(member, mountainName, r)));
+        if (activities.existsByMemberIdAndMountainIdAndStartedAtAndEndedAt(member.getId(), r.mountainId(), r.startedAt(), r.endedAt()))
+            throw HikingActivityConflict.duplicate();
+        // Submitted GPS evidence is checked; this does not attest a device's physical location.
+        return response(activities.saveAndFlush(new HikingActivity(member, mountain.name(), r,
+            GpsEvidence.reachedSummit(r, mountain.lat(), mountain.lng()), HikingRequestFingerprint.of(r))));
     }
+    private record Summit(String name, double lat, double lng) {}
 }

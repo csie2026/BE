@@ -10,6 +10,8 @@ public interface HikingActivityRepository extends JpaRepository<HikingActivity, 
     List<HikingActivity> findByMemberIdOrderByStartedAtDescIdDesc(Long memberId);
     Optional<HikingActivity> findByIdAndMemberId(Long id, Long memberId);
     List<HikingActivity> findAllByMemberIdAndClientRequestIdIgnoreCase(Long memberId, String clientRequestId);
+    boolean existsByMemberIdAndMountainIdAndStartedAtAndEndedAt(Long memberId, Long mountainId,
+        java.time.Instant startedAt, java.time.Instant endedAt);
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select a from HikingActivity a where a.id=:id and a.member.id=:memberId")
     Optional<HikingActivity> lockOwned(@Param("id") Long id, @Param("memberId") Long memberId);
