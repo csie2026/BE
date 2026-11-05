@@ -27,12 +27,16 @@ public class HikingActivity {
     @Column(nullable = false) private long elapsedMs;
     @Column(nullable = false) private boolean completed;
     @Column(nullable = false, length = 36) private String clientRequestId;
+    private Short gpsValidationVersion;
+    private Short requestFingerprintVersion;
+    @Column(length = 64) private String requestFingerprint;
 
     @Column(nullable = false) private boolean gpsRecorded;
     @Column(length = 64) private String gpsEvidenceHash;
 
     protected HikingActivity() {}
-    public HikingActivity(Member member, String mountainName, HikingActivityRequest r) {
+    public HikingActivity(Member member, String mountainName, HikingActivityRequest r,
+        boolean serverCompleted, String fingerprint) {
         this.member = member;
         this.mountainName = mountainName;
         mountainId = r.mountainId();
@@ -41,10 +45,13 @@ public class HikingActivity {
         endedAt = r.endedAt();
         distanceMeters = r.distanceMeters();
         elapsedMs = r.elapsedMs();
-        completed = r.completed();
+        completed = serverCompleted;
         clientRequestId = r.clientRequestId();
-        gpsRecorded = r.gpsEvidence() != null;
+        gpsRecorded = com.ggmount.hiking.service.GpsEvidence.hasUsablePoint(r);
         gpsEvidenceHash = evidenceHash(r);
+        gpsValidationVersion = com.ggmount.hiking.service.GpsEvidence.VALIDATION_VERSION;
+        requestFingerprintVersion = com.ggmount.hiking.service.HikingRequestFingerprint.VERSION;
+        requestFingerprint = fingerprint;
     }
     // Only a canonical fingerprint is persisted: no precise GPS coordinates in the activity table.
     public static String evidenceHash(HikingActivityRequest request) {

@@ -114,7 +114,7 @@ class RankingIntegrationTests {
         String activity="""
             {"mountainId":%d,"courseId":null,"startedAt":"2020-01-01T01:00:00Z",
              "endedAt":"2020-01-01T01:00:00Z","distanceMeters":0,"elapsedMs":0,
-             "completed":false,"clientRequestId":"%s"}
+             "completed":false,"clientRequestId":"%s","gpsSegments":[]}
             """.formatted(mountain,key);
         mvc.perform(post("/api/users/me/hiking-records").session(session).header("X-CSRF-TOKEN",csrf)
             .contentType("application/json").content(activity)).andExpect(status().isOk());

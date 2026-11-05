@@ -87,7 +87,7 @@ class MonthlyGoalIntegrationTests {
  }
  @Test void editingGoalsCannotChangeActivitiesJournalsOrScore()throws Exception{
   long mountain=jdbc.queryForObject("select min(id) from mountains",Long.class);
-  jdbc.update("insert into hiking_activities(id,member_id,mountain_id,mountain_name,started_at,ended_at,distance_meters,elapsed_ms,completed,client_request_id) values(2001,1001,?,'Goal test','2026-11-01T00:00:00Z','2026-11-01T01:00:00Z',1234.5,3600000,true,?)",mountain,UUID.randomUUID().toString());
+  jdbc.update("insert into hiking_activities(id,member_id,mountain_id,mountain_name,started_at,ended_at,distance_meters,elapsed_ms,completed,client_request_id,gps_validation_version,request_fingerprint_version,request_fingerprint) values(2001,1001,?,'Goal test','2026-11-01T00:00:00Z','2026-11-01T01:00:00Z',1234.5,3600000,true,?,null,null,null)",mountain,UUID.randomUUID().toString());
   jdbc.update("insert into hiking_records(id,member_id,mountain_name,title,content,hiking_date,is_public,hiking_activity_id) values(3001,1001,'Goal test','Unchanged','Text','2026-11-01',false,2001)");
   var s=login(1001);String before=mvc.perform(get("/api/users/me/hiking-records").session(s)).andReturn().getResponse().getContentAsString();
   putGoal(s,"2026-11","{\"distanceKm\":100,\"hikeCount\":20}").andExpect(status().isOk());

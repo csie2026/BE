@@ -49,7 +49,7 @@ class HikingStatisticsSourceIntegrationTests {
         return session;
     }
     void activity(long id,long owner,double distance,boolean completed,String start) {
-        jdbc.update("insert into hiking_activities(id,member_id,mountain_id,mountain_name,started_at,ended_at,distance_meters,elapsed_ms,completed,client_request_id) values(?,?,?,'Stats mountain',?,?,?,0,?,?)",
+        jdbc.update("insert into hiking_activities(id,member_id,mountain_id,mountain_name,started_at,ended_at,distance_meters,elapsed_ms,completed,client_request_id,gps_validation_version,request_fingerprint_version,request_fingerprint) values(?,?,?,'Stats mountain',?,?,?,0,?,?,null,null,null)",
             id,owner,mountain,java.time.OffsetDateTime.parse(start),java.time.OffsetDateTime.parse(start),distance,completed,UUID.randomUUID().toString());
     }
     @Test void sourceRequiresLoginAndEmptyMemberReturnsEmptyList() throws Exception {

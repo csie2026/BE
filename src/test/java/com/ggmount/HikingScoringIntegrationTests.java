@@ -78,6 +78,8 @@ class HikingScoringIntegrationTests {
         mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(filters).build();
         courseId = jdbc.queryForObject("select min(id) from courses", Long.class);
         mountainId = jdbc.queryForObject("select mountain_id from courses where id=?", Long.class, courseId);
+        // Isolated fixture summits: server completion tests use actual DB coordinates.
+        jdbc.update("update mountains set lat=37.65,lng=126.97 where id=? or id=?", mountainId, otherMountain());
         identity = "scoring-" + UUID.randomUUID();
         ownerId = member(identity);
         owner = login(identity);
@@ -104,6 +106,7 @@ class HikingScoringIntegrationTests {
             {"mountainId":%d,"courseId":%d,"startedAt":"2020-01-01T01:00:00Z",
              "endedAt":"2020-01-01T03:00:00Z","distanceMeters":1234.5,
              "elapsedMs":2700000,"completed":true,"clientRequestId":"%s",
+             "gpsSegments":[[{"lat":37.65,"lng":126.97,"accuracyMeters":50,"measuredAt":"2020-01-01T01:01:00Z"}]],
              "gpsEvidence":{"latitude":37.65,"longitude":126.97,"accuracyMeters":50,"recordedAt":"2020-01-01T01:01:00Z"}}
             """.formatted(mountainId, courseId, key);
     }
@@ -123,7 +126,7 @@ class HikingScoringIntegrationTests {
     }
     String withoutGps(String body) {
         int key=body.indexOf("\"gpsEvidence\"");
-        return body.substring(0,body.lastIndexOf(',',key))+"}";
+        return (body.substring(0,body.lastIndexOf(',',key))+"}").replaceAll("\"gpsSegments\":\\[\\[.*?\\]\\]", "\"gpsSegments\":[]");
     }
     long score() { return jdbc.queryForObject("select score from members where id=?",Long.class,ownerId); }
     long events() { return jdbc.queryForObject("select count(*) from hiking_score_events where member_id=?",Long.class,ownerId); }
@@ -155,7 +158,7 @@ class HikingScoringIntegrationTests {
         for(int day=1;day<=4;day++) {
             String b=day(body(UUID.randomUUID().toString()),day);
             if(day>=3)b=mountain(b,otherMountain());
-            if(day==1||day==3)b=b.replace("\"completed\":true","\"completed\":false");
+            if(day==1||day==3)b=b.replace("\"completed\":true","\"completed\":false").replace("\"lat\":37.65","\"lat\":37.0");
             save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.visitPoints").value(day==1||day==3?200:100))
                 .andExpect(jsonPath("$.scoring.summitPoints").value(day==1||day==3?0:70));
         }
@@ -167,10 +170,10 @@ class HikingScoringIntegrationTests {
     @Test void thresholdAndGpsFailuresDoNotConsumeTheDay() throws Exception {
         String b=body(UUID.randomUUID().toString());
         save(owner,b.replace("1234.5","499.99")).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("BELOW_MINIMUM"));
-        save(owner,body(UUID.randomUUID().toString()).replace("2700000","1199999")).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("BELOW_MINIMUM"));
-        String old=withoutGps(body(UUID.randomUUID().toString()));
+        save(owner,body(UUID.randomUUID().toString()).replace("T03:00:00Z","T03:02:00Z").replace("2700000","1199999")).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("BELOW_MINIMUM"));
+        String old=withoutGps(body(UUID.randomUUID().toString()).replace("T03:00:00Z","T03:03:00Z"));
         save(owner,old).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("GPS_REQUIRED"));
-        save(owner,body(UUID.randomUUID().toString()).replace("1234.5","500").replace("2700000","1200000"))
+        save(owner,body(UUID.randomUUID().toString()).replace("T03:00:00Z","T03:01:00Z").replace("1234.5","500").replace("2700000","1200000"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.scoring.visitPoints").value(200));
         assertEquals(270,score()); assertEquals(4,count());
     }
@@ -193,15 +196,16 @@ class HikingScoringIntegrationTests {
     @Test void differentUuidsCannotAwardMoreThanOneHikePerDayAndDoNotConsumeAnotherMountainsFirstVisit() throws Exception {
         save(owner,body(UUID.randomUUID().toString())).andExpect(status().isOk());
         save(owner,mountain(body(UUID.randomUUID().toString()),otherMountain())).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("DAILY_LIMIT"));
-        save(owner,body(UUID.randomUUID().toString())).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("DAILY_LIMIT"));
-        assertEquals(270,score());assertEquals(3,count());
+        save(owner,body(UUID.randomUUID().toString())).andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error").value("duplicate_hiking_activity"));
+        assertEquals(270,score());assertEquals(2,count());
         save(owner,day(mountain(body(UUID.randomUUID().toString()),otherMountain()),2)).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.visitPoints").value(200));
         assertEquals(540,score());
     }
     @Test void lateUploadRebuildsTheDailyWinnerAndLeavesAuditEvents() throws Exception {
         String late=body(UUID.randomUUID().toString()).replace("T01:00:00Z","T02:00:00Z").replace("T01:01:00Z","T02:01:00Z");
         save(owner,late).andExpect(status().isOk());assertEquals(270,score());
-        String early=body(UUID.randomUUID().toString()).replace("\"completed\":true","\"completed\":false");
+        String early=body(UUID.randomUUID().toString()).replace("\"completed\":true","\"completed\":false").replace("\"lat\":37.65","\"lat\":37.0");
         save(owner,early).andExpect(status().isOk());assertEquals(200,score());
         assertEquals(1,jdbc.queryForObject("select count(*) from hiking_daily_certifications where member_id=?",Integer.class,ownerId));
         assertTrue(jdbc.queryForObject("select count(*) from hiking_score_events where member_id=? and points_delta<0",Integer.class,ownerId)>0);
@@ -233,7 +237,8 @@ class HikingScoringIntegrationTests {
         TestTransaction.flagForCommit();TestTransaction.end();
         var principal=new OAuthPrincipal(List.of(),Map.of("sub",identity),"sub",info(identity));
         var request=new HikingActivityRequest(mountainId,courseId,Instant.parse("2020-01-01T01:00:00Z"),Instant.parse("2020-01-01T03:00:00Z"),500.0,1200000L,true,UUID.randomUUID().toString(),
-            new GpsEvidence(37.65,126.97,50.0,Instant.parse("2020-01-01T01:01:00Z")));
+            new GpsEvidence(37.65,126.97,50.0,Instant.parse("2020-01-01T01:01:00Z")),
+            List.of(List.of(new com.ggmount.hiking.dto.GpsPointRequest(37.65,126.97,Instant.parse("2020-01-01T01:01:00Z"),50.0))));
         assertThrows(IllegalStateException.class,()->new TransactionTemplate(transactions).execute(status->{
             activityService.create(principal,request);throw new IllegalStateException("forced rollback after activity and score writes");
         }));
@@ -254,7 +259,7 @@ class HikingScoringIntegrationTests {
         try {
             var gate=new CountDownLatch(1);
             var f1=pool.submit(()->{gate.await();save(owner,body(one)).andExpect(status().isOk());return null;});
-            var f2=pool.submit(()->{gate.await();save(owner,body(two)).andExpect(status().isOk());return null;});
+            var f2=pool.submit(()->{gate.await();save(owner,body(two).replace("T03:00:00Z","T03:01:00Z")).andExpect(status().isOk());return null;});
             gate.countDown();f1.get(30,TimeUnit.SECONDS);f2.get(30,TimeUnit.SECONDS);
             assertEquals(2,count());assertEquals(270,score());
             long j1=journal(one,false),j2=journal(two,false);
@@ -264,4 +269,58 @@ class HikingScoringIntegrationTests {
             r1.get(30,TimeUnit.SECONDS);r2.get(30,TimeUnit.SECONDS);assertEquals(270,score());
         } finally { pool.shutdownNow();TestTransaction.start(); }
     }
+    @Test void mergedServerCompletionOverridesClientExpectationBeforeAwardingSummitPoints() throws Exception {
+        String b=body(UUID.randomUUID().toString()).replace("\"lat\":37.65","\"lat\":37.0");
+        save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(false))
+            .andExpect(jsonPath("$.gpsValidationVersion").value(1))
+            .andExpect(jsonPath("$.scoring.visitPoints").value(200))
+            .andExpect(jsonPath("$.scoring.summitPoints").value(0));
+        assertEquals(200,score());
+    }
+    @Test void mergedRouteProvenSummitAwardsSeventyEvenWhenClientExpectedFalse() throws Exception {
+        save(owner,body(UUID.randomUUID().toString()).replace("\"completed\":true","\"completed\":false"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true))
+            .andExpect(jsonPath("$.scoring.summitPoints").value(70));
+        assertEquals(270,score());
+    }
+    @Test void mergedOptionalSampleCannotReplaceRequiredNewRoute() throws Exception {
+        String b=body(UUID.randomUUID().toString()).replaceAll("\"gpsSegments\":\\[\\[.*?\\]\\],", "");
+        save(owner,b).andExpect(status().isBadRequest());assertEquals(0,count());assertEquals(0,events());
+    }
+    @Test void mergedEmptyRouteWithValidOptionalSampleCannotEarnActivityPoints() throws Exception {
+        String b=body(UUID.randomUUID().toString()).replaceAll("\"gpsSegments\":\\[\\[.*?\\]\\]", "\"gpsSegments\":[]");
+        save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(false))
+            .andExpect(jsonPath("$.scoring.status").value("GPS_REQUIRED"));
+        assertEquals(0,score());
+    }
+    @Test void mergedLeaderRouteOnlyRequestsStillReceiveScoringWithoutInventingAnOptionalSample() throws Exception {
+        String b=body(UUID.randomUUID().toString());int k=b.indexOf("\"gpsEvidence\"");
+        b=b.substring(0,b.lastIndexOf(',',k))+"}";
+        save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true))
+            .andExpect(jsonPath("$.scoring.visitPoints").value(200))
+            .andExpect(jsonPath("$.scoring.summitPoints").value(70));
+        assertEquals(270,score());
+    }
+    @Test void mergedInvalidRouteCannotHideBehindAValidScoringSample() throws Exception {
+        save(owner,body(UUID.randomUUID().toString()).replace("\"lat\":37.65","\"lat\":91"))
+            .andExpect(status().isBadRequest());assertEquals(0,count());assertEquals(0,events());
+    }
+    @Test void mergedUppercaseUuidRetryReturnsOneScoredActivityWithoutNewEvents() throws Exception {
+        String key=UUID.randomUUID().toString(),b=body(key);
+        save(owner,b).andExpect(status().isOk());long n=events();
+        save(owner,b.replace(key,key.toUpperCase(java.util.Locale.ROOT))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(activityId(key)));
+        assertEquals(1,count());assertEquals(270,score());assertEquals(n,events());
+    }
+    @Test void mergedPublicJournalDeletionKeepsServerVerifiedActivityAndItsTwoScoreComponents() throws Exception {
+        String key=UUID.randomUUID().toString();save(owner,body(key)).andExpect(status().isOk());
+        long id=activityId(key),j=journal(key,true);assertEquals(320,score());deleteJournal(j);
+        assertEquals(270,score());assertEquals(1,count());
+        mvc.perform(get(API+"/"+id).session(owner)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.completed").value(true)).andExpect(jsonPath("$.journalId").isEmpty())
+            .andExpect(jsonPath("$.gpsValidationVersion").value(1))
+            .andExpect(jsonPath("$.scoring.visitPoints").value(200))
+            .andExpect(jsonPath("$.scoring.summitPoints").value(70));
+    }
+
 }

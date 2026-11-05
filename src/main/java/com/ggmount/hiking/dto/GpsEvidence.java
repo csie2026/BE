@@ -8,6 +8,8 @@ public record GpsEvidence(
     @NotNull Double latitude, @NotNull Double longitude,
     @NotNull Double accuracyMeters, @NotNull @PastOrPresent Instant recordedAt
 ) {
+    @Override public String toString() { return "GpsEvidence[redacted]"; }
+
     @AssertTrue(message = "유효한 GPS 표본을 확인해주세요.")
     public boolean isSampleValid() {
         return latitude != null && longitude != null && accuracyMeters != null && recordedAt != null
