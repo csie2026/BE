@@ -8,6 +8,10 @@ import java.util.Map;
 // 검증 실패·잘못된 JSON·업로드 제한을 FE 공통 오류 처리에서 읽을 수 있는 응답으로 변환한다.
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(com.ggmount.hiking.service.HikingActivityConflict.class)
+    public ResponseEntity<?> hikingConflict(com.ggmount.hiking.service.HikingActivityConflict e) {
+        return ResponseEntity.status(409).body(Map.of("error", e.code(), "message", e.getReason()));
+    }
     @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
     public ResponseEntity<?> oversizedUpload() {
         return ResponseEntity.status(413)
