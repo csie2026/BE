@@ -79,7 +79,6 @@ public class KmaForecastClient {
         }
         catch (Exception e) {
             // 키 오류 등은 JSON 대신 XML이 와서 파싱에서 실패합니다
-            // Do not attach the client exception: its URI can contain the service key.
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
         }
     }
@@ -97,7 +96,6 @@ public class KmaForecastClient {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
         }
         try {
-            // An explicitly empty array is a valid no-data response.
             return toHours(body.response().body().items().item());
         } catch (RuntimeException e) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
