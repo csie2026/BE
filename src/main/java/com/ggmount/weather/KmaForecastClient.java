@@ -12,6 +12,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
+import java.time.format.ResolverStyle;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
@@ -22,8 +23,8 @@ import java.util.regex.Pattern;
 @Component
 public class KmaForecastClient {
     private static final String URL = "https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst";
-    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyyMMdd");
-    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HHmm");
+    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("uuuuMMdd").withResolverStyle(ResolverStyle.STRICT);
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HHmm").withResolverStyle(ResolverStyle.STRICT);
     private static final Pattern NUMBER = Pattern.compile("[0-9]+(\\.[0-9]+)?");
 
     private final RestClient http = RestClient.create();
@@ -73,23 +74,34 @@ public class KmaForecastClient {
             .queryParam("nx", nx)
             .queryParam("ny", ny)
             .encode().buildAndExpand(serviceKey).toUri();
-        KmaResponse body;
         try {
-            body = http.get().uri(uri).retrieve().body(KmaResponse.class);
+            return parseResponse(http.get().uri(uri).retrieve().body(KmaResponse.class));
         }
         catch (Exception e) {
             // 키 오류 등은 JSON 대신 XML이 와서 파싱에서 실패합니다
-            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.", e);
+            // Do not attach the client exception: its URI can contain the service key.
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
         }
+    }
+
+    static List<HourForecast> parseResponse(KmaResponse body) {
         if (body == null
             || body.response() == null
+            || body.response().header() == null
             || !"00".equals(body.response()
                 .header()
                 .resultCode())
-            || body.response().body() == null) {
+            || body.response().body() == null
+            || body.response().body().items() == null
+            || body.response().body().items().item() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
         }
-        return toHours(body.response().body().items().item());
+        try {
+            // An explicitly empty array is a valid no-data response.
+            return toHours(body.response().body().items().item());
+        } catch (RuntimeException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");
+        }
     }
 
     // 기상청은 기온·강수 등을 항목별로 반환하므로 같은 예보 시각의 항목을 하나의 시간별 예보로 합친다.
