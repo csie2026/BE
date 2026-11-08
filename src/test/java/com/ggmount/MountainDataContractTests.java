@@ -43,7 +43,10 @@ class MountainDataContractTests {
     @BeforeEach void setup() {
         mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(filters).build();
         var info = new OAuthUserInfo("google", "data-contract", "contract@example.invalid", "검증", null);
-        var principal = new OAuthPrincipal(List.of(), Map.of("sub", info.providerId()), "sub", info);
+        if (jdbc.queryForObject("select count(*) from members where provider='google' and provider_id='data-contract'",Long.class)==0)
+            jdbc.update("insert into members(provider,provider_id,nickname,profile_completed) values('google','data-contract','Contract',true)");
+        long memberId=jdbc.queryForObject("select id from members where provider='google' and provider_id='data-contract'",Long.class);
+        var principal = new OAuthPrincipal(List.of(), Map.of("sub", info.providerId()), "sub", info, memberId);
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "google"));
         session = new MockHttpSession();

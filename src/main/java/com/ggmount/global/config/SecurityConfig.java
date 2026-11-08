@@ -18,7 +18,8 @@ public class SecurityConfig {
         HttpSecurity http,
         CustomOAuth2UserService userService,
         OAuth2LoginSuccessHandler successHandler,
-        OAuth2LoginFailureHandler failureHandler
+        OAuth2LoginFailureHandler failureHandler,
+        com.ggmount.member.repository.MemberRepository members
     ) throws Exception {
         http
         .authorizeHttpRequests(authorize -> authorize
@@ -57,6 +58,9 @@ public class SecurityConfig {
                 .userInfoEndpoint(userInfo -> userInfo.userService(userService))
                 .successHandler(successHandler)
                 .failureHandler(failureHandler));
+        // Existing CSRF, logout and OAuth settings remain; validate immutable login incarnation before authorization.
+        http.addFilterBefore(new com.ggmount.global.auth.oauth.ActiveMemberSessionFilter(members),
+            org.springframework.security.web.access.intercept.AuthorizationFilter.class);
         // 기본 세션 정책과 CSRF 보호를 유지합니다.
         return http.build();
     }

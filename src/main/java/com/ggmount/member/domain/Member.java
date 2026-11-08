@@ -3,6 +3,7 @@ import com.ggmount.global.auth.oauth.OAuthUserInfo;
 import jakarta.persistence.*;
 import lombok.Getter;
 import java.time.Year;
+import java.time.Instant;
 @Entity
 @org.hibernate.annotations.DynamicUpdate
 @Table(
@@ -33,6 +34,14 @@ public class Member {
     private boolean profileCompleted;
     // Null means no ranking score has been calculated yet.
     private Long score;
+    // Unknown for members created before this field was introduced. Never derive from activity dates.
+    @Column(name = "joined_at", updatable = false)
+    private Instant joinedAt;
+
+    @PrePersist
+    void recordJoinTime() {
+        if (joinedAt == null) joinedAt = Instant.now();
+    }
     protected Member() {
     }
     public Member(OAuthUserInfo info) {

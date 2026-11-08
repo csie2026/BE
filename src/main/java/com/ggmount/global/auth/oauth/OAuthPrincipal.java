@@ -9,6 +9,7 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 public class OAuthPrincipal extends DefaultOAuth2User {
 
     private final OAuthUserInfo userInfo;
+    private final Long memberId;
 
     public OAuthPrincipal(
         Collection<? extends GrantedAuthority> authorities,
@@ -17,17 +18,25 @@ public class OAuthPrincipal extends DefaultOAuth2User {
         String nameAttributeKey,
         OAuthUserInfo userInfo
     ) {
+        this(authorities, attributes, nameAttributeKey, userInfo, null);
+    }
+
+    public OAuthPrincipal(Collection<? extends GrantedAuthority> authorities, Map<String, Object> attributes,
+        String nameAttributeKey, OAuthUserInfo userInfo, Long memberId) {
         super(authorities, attributes, nameAttributeKey);
         this.userInfo = userInfo;
+        this.memberId = memberId;
     }
+
+    public Long getMemberId() { return memberId; }
 
     public OAuthUserInfo getUserInfo() {
         return userInfo;
     }
 
     @Override
-    // 공급자 이름을 함께 포함해 서로 다른 OAuth 공급자의 같은 사용자 ID가 충돌하지 않게 한다.
+    // Bind authorized-client caches to the immutable account incarnation; old tokens cannot bind a rejoined account.
     public String getName() {
-        return userInfo.provider() + ":" + userInfo.providerId();
+        return memberId == null ? userInfo.provider() + ":" + userInfo.providerId() : "topeak:" + memberId;
     }
 }

@@ -2,6 +2,7 @@ package com.ggmount.member.dto;
 
 import com.ggmount.member.domain.Member;
 import java.util.Map;
+import java.time.Instant;
 
 public record MemberResponse(
     Long userId,
@@ -11,7 +12,10 @@ public record MemberResponse(
     String profileImageUrl,
     boolean profileCompleted,
     Long score,
-    String backgroundImageUrl
+    String backgroundImageUrl,
+    String provider,
+    String email,
+    Instant joinedAt
 ) {
     public static MemberResponse from(Member member) {
         return withImages(member, Map.of());
@@ -31,7 +35,10 @@ public record MemberResponse(
             imageUrl(
                 "background",
                 revisions.get("background")
-            )
+            ),
+            member.getProvider(),
+            member.getEmail(),
+            member.getJoinedAt()
         );
     }
 

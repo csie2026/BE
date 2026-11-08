@@ -41,7 +41,7 @@ class HikingStatisticsSourceIntegrationTests {
     }
     MockHttpSession login(long id) {
         var info=new OAuthUserInfo("google","stats-"+id,"stats@example.invalid","Stats "+id,null);
-        var principal=new OAuthPrincipal(List.of(),Map.of("sub",info.providerId()),"sub",info);
+        var principal=new OAuthPrincipal(List.of(),Map.of("sub",info.providerId()),"sub",info,id);
         var security=SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(principal,principal.getAuthorities(),"google"));
         var session=new MockHttpSession();

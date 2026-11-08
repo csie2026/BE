@@ -63,8 +63,8 @@ class MemberImageIntegrationTests {
             "Social name",
             "https://example.com/social.png"
         );
-        oauth.processLogin(info);
-        var principal = new OAuthPrincipal(List.of(), Map.of("sub", identity), "sub", info);
+        var boundMember = oauth.processLogin(info);
+        var principal = new OAuthPrincipal(List.of(), Map.of("sub", identity), "sub", info, boundMember.getId());
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(
             principal,

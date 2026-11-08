@@ -90,7 +90,7 @@ class HikingActivityPostgresTests {
 
     Client session(String name) throws Exception {
         var info = new OAuthUserInfo("google", name, null, "Probe", null);
-        var principal = new OAuthPrincipal(List.of(), Map.of("sub", name), "sub", info);
+        var principal = new OAuthPrincipal(List.of(), Map.of("sub", name), "sub", info, jdbc.queryForObject("select id from members where provider='google' and provider_id=?",Long.class,name));
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "google"));
         var session = new MockHttpSession();
