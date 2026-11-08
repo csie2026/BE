@@ -296,6 +296,48 @@ class MemberImageIntegrationTests {
     }
 
     @Test
+    void rejectedLogoutKeepsSessionAndFreshCsrfCanRetry() throws Exception {
+        var session = login("google", "logout-retry");
+        for (String token : List.of("", "invalid-token")) {
+            var request = post("/api/logout").session(session);
+            if (!token.isEmpty()) request.header("X-CSRF-TOKEN", token);
+            mvc.perform(request).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("invalid_csrf"));
+            assertFalse(session.isInvalid());
+            mvc.perform(get("/api/users/me").session(session)).andExpect(status().isOk());
+        }
+        String oldId = session.getId();
+        mvc.perform(post("/api/logout").session(session).header("X-CSRF-TOKEN", csrf(session)))
+            .andExpect(status().isNoContent());
+        assertTrue(session.isInvalid());
+        mvc.perform(get("/api/users/me").cookie(new jakarta.servlet.http.Cookie("JSESSIONID", oldId)))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/users/me/hiking-records").cookie(new jakarta.servlet.http.Cookie("JSESSIONID", oldId)))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void profileMemberIdInBodyCannotChangeAnotherMemberOrExposePrivateFields() throws Exception {
+        var owner = login("google", "profile-body-owner");
+        var other = login("google", "profile-body-other");
+        complete(owner);
+        complete(other);
+        Long otherId = members.findByProviderAndProviderId("google", "profile-body-other").orElseThrow().getId();
+        mvc.perform(patch("/api/users/me/profile").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"nickname\":\"Owner changed\",\"birthYear\":2001,\"userId\":" + otherId + "}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.nickname").value("Owner changed"));
+        mvc.perform(get("/api/users/me").session(other))
+            .andExpect(jsonPath("$.nickname").value("Chosen"));
+        mvc.perform(get("/api/users/" + otherId + "/profile").session(owner))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.email").doesNotExist())
+            .andExpect(jsonPath("$.birthYear").doesNotExist())
+            .andExpect(jsonPath("$.providerId").doesNotExist())
+            .andExpect(jsonPath("$.backgroundImageUrl").doesNotExist());
+    }
+
+    @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void committedImagesAndProfileRemainAfterNewLoginTransaction() throws Exception {
         String identity = "committed-" + java.util.UUID.randomUUID();
