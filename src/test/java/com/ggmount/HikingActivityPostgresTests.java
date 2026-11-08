@@ -57,7 +57,8 @@ class HikingActivityPostgresTests {
             throw new IllegalArgumentException("A dedicated local uuid_idempotency_regression DB is required");
         properties.add("spring.datasource.url", () -> url);
         properties.add("spring.datasource.username", () -> System.getProperty("topeak.postgres.test-user", "uuid_test_admin"));
-        properties.add("spring.datasource.password", () -> System.getProperty("topeak.postgres.test-password", ""));
+        properties.add("spring.datasource.password", () -> System.getProperty("topeak.postgres.test-password",
+            System.getenv().getOrDefault("TOPEAK_TEST_PASSWORD", "")));
     }
 
     @Autowired WebApplicationContext context;
