@@ -27,10 +27,11 @@ public class MemberService {
     }
     // 요청의 임의 회원 ID 대신 세션의 OAuth 식별자로 내부 회원을 찾아 본인 데이터의 기준으로 삼는다.
     public Member current(OAuthPrincipal principal) {
-        if (principal == null)
+        if (principal == null || principal.getMemberId() == null)
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         var info = principal.getUserInfo();
-        return repository.findByProviderAndProviderId(info.provider(), info.providerId())
+        return repository.findById(principal.getMemberId())
+            .filter(member -> member.getProvider().equals(info.provider()) && member.getProviderId().equals(info.providerId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
     public PublicMemberResponse publicProfile(Long id) {

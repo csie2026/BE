@@ -43,7 +43,7 @@ class MonthlyGoalIntegrationTests {
   mvc=MockMvcBuilders.webAppContextSetup(context).addFilters(filters).build();
   for(long id:List.of(1001L,1002L))jdbc.update("insert into members(id,provider,provider_id,nickname,profile_completed,score) values(?,'google',?,?,true,777)",id,"goal-"+id,"Goal "+id);
  }
- OAuthPrincipal principal(long id){var info=new OAuthUserInfo("google","goal-"+id,"goal@example.invalid","Goal "+id,null);return new OAuthPrincipal(List.of(),Map.of("sub",info.providerId()),"sub",info);}
+ OAuthPrincipal principal(long id){var info=new OAuthUserInfo("google","goal-"+id,"goal@example.invalid","Goal "+id,null);return new OAuthPrincipal(List.of(),Map.of("sub",info.providerId()),"sub",info,id);}
  MockHttpSession login(long id){var p=principal(id);var security=SecurityContextHolder.createEmptyContext();security.setAuthentication(new OAuth2AuthenticationToken(p,p.getAuthorities(),"google"));var s=new MockHttpSession();s.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY,security);return s;}
  String token(MockHttpSession session)throws Exception{return mvc.perform(get("/api/csrf").session(session)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString().split("\"token\":\"")[1].split("\"")[0];}
  ResultActions putGoal(MockHttpSession session,String month,String body)throws Exception{return mvc.perform(put(API+month).session(session).header("X-CSRF-TOKEN",token(session)).contentType("application/json").content(body));}

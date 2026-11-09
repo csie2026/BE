@@ -94,7 +94,7 @@ class HikingScoringIntegrationTests {
         return member.getId();
     }
     MockHttpSession login(String id) {
-        var principal = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id));
+        var principal = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id), members.findByProviderAndProviderId("google",id).orElseThrow().getId());
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(principal, principal.getAuthorities(), "google"));
         var session = new MockHttpSession();
@@ -235,7 +235,7 @@ class HikingScoringIntegrationTests {
     }
     @Test void activityScoreLedgerAndMemberScoreRollBackTogether() {
         TestTransaction.flagForCommit();TestTransaction.end();
-        var principal=new OAuthPrincipal(List.of(),Map.of("sub",identity),"sub",info(identity));
+        var principal=new OAuthPrincipal(List.of(),Map.of("sub",identity),"sub",info(identity),ownerId);
         var request=new HikingActivityRequest(mountainId,courseId,Instant.parse("2020-01-01T01:00:00Z"),Instant.parse("2020-01-01T03:00:00Z"),500.0,1200000L,true,UUID.randomUUID().toString(),
             new GpsEvidence(37.65,126.97,50.0,Instant.parse("2020-01-01T01:01:00Z")),
             List.of(List.of(new com.ggmount.hiking.dto.GpsPointRequest(37.65,126.97,Instant.parse("2020-01-01T01:01:00Z"),50.0))));

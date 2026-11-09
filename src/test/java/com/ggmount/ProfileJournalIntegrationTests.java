@@ -48,8 +48,9 @@ class ProfileJournalIntegrationTests {
             .build();
     }
     @Test
-    void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exception {
-        var authenticated = session("mountain-selection");
+void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exception {
+    oauth.processLogin(info("mountain-selection"));
+    var authenticated = session("mountain-selection");
         mvc.perform(get("/api/mountains")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/mountains").session(authenticated))
         .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(140));
@@ -91,7 +92,7 @@ class ProfileJournalIntegrationTests {
         );
     }
     MockHttpSession session(String id) {
-        var p = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id));
+        var p = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id), members.findByProviderAndProviderId("google",id).orElseThrow().getId());
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(p, p.getAuthorities(), "google"));
         var session = new MockHttpSession();
@@ -128,6 +129,42 @@ class ProfileJournalIntegrationTests {
         assertEquals(m.getId(), returning.getId());
         assertEquals("Trail user", returning.getNickname());
         assertTrue(returning.isProfileCompleted());
+    }
+    @Test
+    void ownAccountDetailsKeepOriginalJoinTimeAndStayOutOfPublicProfile() throws Exception {
+        Member member = oauth.processLogin(info("account-details"));
+        member.completeProfile("Account user", 2003);
+        members.flush();
+        var originalJoinTime = member.getJoinedAt();
+        assertNotNull(originalJoinTime);
+        var authenticated = session("account-details");
+        mvc.perform(get("/api/users/me").session(authenticated))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.provider").value("google"))
+            .andExpect(jsonPath("$.email").value("private@example.com"))
+            .andExpect(jsonPath("$.joinedAt").isString());
+        assertEquals(originalJoinTime, oauth.processLogin(info("account-details")).getJoinedAt());
+        mvc.perform(get("/api/users/" + member.getId() + "/profile").session(authenticated))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.email").doesNotExist())
+            .andExpect(jsonPath("$.provider").doesNotExist())
+            .andExpect(jsonPath("$.joinedAt").doesNotExist());
+        mvc.perform(get("/api/rankings/summary").session(authenticated))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.members[*].email").isEmpty())
+            .andExpect(jsonPath("$.members[*].provider").isEmpty())
+            .andExpect(jsonPath("$.members[*].joinedAt").isEmpty());
+    }
+    @Test
+    void legacyMemberUnknownJoinTimeRemainsUnknownAfterRelogin() throws Exception {
+        Member member = oauth.processLogin(info("legacy-account-details"));
+        members.flush();
+        jdbc.update("update members set joined_at=null where id=?", member.getId());
+        entityManager.clear();
+        var authenticated = session("legacy-account-details");
+        mvc.perform(get("/api/users/me").session(authenticated))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.joinedAt").doesNotExist());
+        assertNull(oauth.processLogin(info("legacy-account-details")).getJoinedAt());
     }
     @Test
     void validatesYearAndNicknameAndRejectsInvalidApiRequests() throws Exception {
