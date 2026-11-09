@@ -1,0 +1,26 @@
+# 임시 Cloudflare HTTPS 모바일 OAuth 테스트 전용입니다. 운영 배포 설정이 아닙니다.
+# BE 디렉터리에서 local,mobile 순서로 활성화해 local의 .env 및 DB 설정을 유지합니다.
+# localhost HTTP 개발 시에는 local만 활성화합니다.
+# 터널 주소 변경 시 아래 frontend-url과 Google/Kakao 콘솔의 Redirect URI를 함께 갱신합니다.
+app:
+  frontend-url: https://motel-recipes-reporting-harmony.trycloudflare.com
+
+spring:
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            redirect-uri: "${app.frontend-url}/login/oauth2/code/google"
+          kakao:
+            redirect-uri: "${app.frontend-url}/login/oauth2/code/kakao"
+
+# 명시적 콜백 주소를 사용하므로 프록시 전달 헤더에 콜백 생성을 의존하지 않습니다.
+# 이 쿠키 설정은 외부 HTTPS 테스트용이며 localhost HTTP 개발에는 적용하지 않습니다.
+server:
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: lax
