@@ -79,6 +79,7 @@ public class HikingActivityService {
             return response(a);
         }
         GpsEvidence.validate(raw);
+        GpsEvidence.validateDistance(raw);
         var mountain = jdbc.query("select name,lat,lng from mountains where id=?",
             (rs, i) -> new Summit(rs.getString(1), rs.getDouble(2), rs.getDouble(3)), r.mountainId()).stream().findFirst()
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "산을 찾을 수 없습니다."));

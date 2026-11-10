@@ -87,9 +87,14 @@ class WithdrawalIntegrationTests {
         String body = "{\"mountainId\":47,\"courseId\":300,\"startedAt\":\"2020-01-01T01:00:00Z\","
             + "\"endedAt\":\"2020-01-01T01:20:00Z\",\"distanceMeters\":500,\"elapsedMs\":1200000,"
             + "\"completed\":true,\"clientRequestId\":\"" + UUID.randomUUID() + "\","
-            + "\"gpsSegments\":[[{\"lat\":37.6586301,\"lng\":126.9780032,\"accuracyMeters\":5,\"measuredAt\":\"2020-01-01T01:01:00Z\"}]]}";
+            + "\"gpsSegments\":[[{\"lat\":37.6586301,\"lng\":126.9780032,\"accuracyMeters\":5,\"measuredAt\":\"2020-01-01T01:01:00Z\"},"
+            + "{\"lat\":" + (37.6586301 + Math.toDegrees(500.0 / 6_371_000))
+            + ",\"lng\":126.9780032,\"accuracyMeters\":5,\"measuredAt\":\"2020-01-01T01:10:00Z\"}]]}";
         mvc.perform(post("/api/users/me/hiking-records").session(client.session()).header("X-CSRF-TOKEN", client.csrf())
-            .contentType("application/json").content(body)).andExpect(status().isOk());
+            .contentType("application/json").content(body)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.scoring.status").value("CERTIFIED"))
+            .andExpect(jsonPath("$.scoring.visitPoints").value(200))
+            .andExpect(jsonPath("$.scoring.summitPoints").value(70));
         long activity = jdbc.queryForObject("select id from hiking_activities where member_id=?", Long.class, client.id());
         mvc.perform(post("/api/journals").session(client.session()).header("X-CSRF-TOKEN", client.csrf())
             .contentType("application/json").content("{\"hikingRecordId\":" + activity + ",\"title\":\"Delete me\",\"content\":\"Private text\",\"isPublic\":true}"))

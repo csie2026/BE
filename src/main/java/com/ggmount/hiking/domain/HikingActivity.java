@@ -47,7 +47,7 @@ public class HikingActivity {
         elapsedMs = r.elapsedMs();
         completed = serverCompleted;
         clientRequestId = r.clientRequestId();
-        gpsRecorded = com.ggmount.hiking.service.GpsEvidence.hasUsablePoint(r);
+        gpsRecorded = com.ggmount.hiking.service.GpsEvidence.hasDistanceEvidence(r);
         gpsEvidenceHash = evidenceHash(r);
         gpsValidationVersion = com.ggmount.hiking.service.GpsEvidence.VALIDATION_VERSION;
         requestFingerprintVersion = com.ggmount.hiking.service.HikingRequestFingerprint.VERSION;

@@ -47,7 +47,7 @@ class OAuthMemberCreationIntegrationTests {
     @Autowired OAuthUserInfoMapper mapper;
     @Autowired OAuthMemberService oauthMembers;
     @Autowired MemberService members;
-    @Autowired MemberRepository repository;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean MemberRepository repository;
     @Autowired PlatformTransactionManager transactions;
     private CustomOAuth2UserService loader;
     private MockRestServiceServer server;
@@ -139,5 +139,48 @@ class OAuthMemberCreationIntegrationTests {
         assertNull(member.getEmail());
         assertNull(member.getProfileImageUrl());
         assertNull(member.getBirthYear());
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"google", "kakao"})
+    void concurrentFirstLoginsRecoverOnlyAfterRollbackAndReturnTheSameCommittedMember(String provider) throws Exception {
+        var gate = new java.util.concurrent.CyclicBarrier(2);
+        var missing = new java.util.concurrent.atomic.AtomicInteger();
+        // Force both real transactions to observe the absent row. There is no row to lock yet.
+        org.mockito.Mockito.doAnswer(invocation -> {
+            var found = repository.findByProviderAndProviderId(provider,identity);
+            if (found.isEmpty()) {
+                missing.incrementAndGet();
+                gate.await(10,java.util.concurrent.TimeUnit.SECONDS);
+            }
+            return found;
+        }).when(repository).lockForLogin(provider,identity);
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(2);
+        try {
+            var info = new OAuthUserInfo(provider,identity,null,"Provider nickname",null);
+            var one = pool.submit(() -> oauthMembers.processLogin(info).getId());
+            var two = pool.submit(() -> oauthMembers.processLogin(info).getId());
+            assertEquals(one.get(20,java.util.concurrent.TimeUnit.SECONDS),two.get(20,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals(2,missing.get());
+            assertEquals(one.get(),committedMember(provider).getId());
+            long count = read.execute(status -> repository.findAll().stream()
+                .filter(m -> provider.equals(m.getProvider()) && identity.equals(m.getProviderId())).count());
+            assertEquals(1L,count);
+        } finally {
+            pool.shutdownNow();
+            assertTrue(pool.awaitTermination(10,java.util.concurrent.TimeUnit.SECONDS));
+        }
+    }
+
+    @org.junit.jupiter.api.Test
+    void unrelatedDatabaseFailureIsNotRetriedOrTurnedIntoSuccessfulLogin() {
+        var failure = new org.springframework.dao.DataIntegrityViolationException("not null",
+            new java.sql.SQLException("private database detail","23502"));
+        org.mockito.Mockito.doThrow(failure).when(repository).saveAndFlush(org.mockito.ArgumentMatchers.any(Member.class));
+        assertSame(failure,assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+            () -> oauthMembers.processLogin(new OAuthUserInfo("google",identity,null,null,null))));
+        org.mockito.Mockito.verify(repository,org.mockito.Mockito.times(1))
+            .saveAndFlush(org.mockito.ArgumentMatchers.any(Member.class));
+        boolean absent = read.execute(status -> repository.findByProviderAndProviderId("google",identity).isEmpty());
+        assertTrue(absent);
     }
 }

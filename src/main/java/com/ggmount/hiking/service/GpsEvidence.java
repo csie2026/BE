@@ -6,6 +6,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 
 public final class GpsEvidence {
+    // Persisted V1 evidence/fingerprint format remains unchanged. New inserts also check distance.
     public static final short VALIDATION_VERSION = 1;
     public static final int MAX_POINTS = 10_000;
     public static final int MAX_SEGMENTS = 10_000;
@@ -37,6 +38,43 @@ public final class GpsEvidence {
         if (request.gpsSegments() == null) return false;
         return request.gpsSegments().stream().flatMap(java.util.Collection::stream)
             .anyMatch(point -> point.accuracyMeters() <= 50);
+    }
+
+    /** Same unrounded coordinates and per-segment Haversine sum as FE trackDistance.
+     * Sparse/low-quality evidence remains saveable, but cannot certify a visit. */
+    public static boolean hasDistanceEvidence(HikingActivityRequest request) {
+        if (request.gpsSegments() == null) return false;
+        boolean edge = false;
+        for (var segment : request.gpsSegments()) {
+            for (var point : segment) if (point.accuracyMeters() > 50) return false;
+            for (int i = 1; i < segment.size(); i++)
+                edge |= distanceMeters(segment.get(i - 1).lat(), segment.get(i - 1).lng(),
+                    segment.get(i).lat(), segment.get(i).lng()) > 0;
+        }
+        return edge;
+    }
+
+    public static double routeDistance(HikingActivityRequest request) {
+        double total = 0;
+        for (var segment : request.gpsSegments()) {
+            double subtotal = 0;
+            for (int i = 1; i < segment.size(); i++) {
+                var a = segment.get(i - 1);
+                var b = segment.get(i);
+                subtotal += distanceMeters(a.lat(), a.lng(), b.lat(), b.lng());
+            }
+            total += subtotal;
+        }
+        return total;
+    }
+
+    public static void validateDistance(HikingActivityRequest request) {
+        if (!hasDistanceEvidence(request)) return;
+        double distance = routeDistance(request);
+        double tolerance = Math.max(1, distance * 0.000001);
+        if (Math.abs(distance - request.distanceMeters()) > tolerance)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "GPS 경로와 제출 거리가 일치하지 않습니다. 기록을 보존하고 확인해주세요.");
     }
 
     public static boolean reachedSummit(HikingActivityRequest request, double lat, double lng) {

@@ -55,4 +55,29 @@ class ProductionSessionTests {
             assertEquals(204, client.send(logout.build(), HttpResponse.BodyHandlers.discarding()).statusCode());
         }
     }
+
+    @Test void providerCancellationReturnsToFrontendThroughTheRealSecurityFilterWithoutProviderCalls() throws Exception {
+        var base = URI.create("http://127.0.0.1:" + port);
+        // Redirects are deliberately not followed: every request stays on the local test server.
+        try (var client = HttpClient.newHttpClient()) {
+            for (String provider : new String[]{"google","kakao"}) {
+                var start = client.send(HttpRequest.newBuilder(base.resolve("/oauth2/authorization/" + provider)).build(),
+                    HttpResponse.BodyHandlers.discarding());
+                assertEquals(302,start.statusCode());
+                var authorize = URI.create(start.headers().firstValue("Location").orElseThrow());
+                String state = Arrays.stream(authorize.getRawQuery().split("&"))
+                    .filter(pair -> pair.startsWith("state=")).findFirst().orElseThrow();
+                String cookie = start.headers().allValues("Set-Cookie").stream()
+                    .filter(value -> value.startsWith("JSESSIONID=")).findFirst().orElseThrow().split(";",2)[0];
+                var callback = base.resolve("/login/oauth2/code/" + provider
+                    + "?error=access_denied&error_description=private-provider-error&" + state
+                    + "&redirect=https://attacker.invalid");
+                var failed = client.send(HttpRequest.newBuilder(callback).header("Cookie",cookie).build(),
+                    HttpResponse.BodyHandlers.ofString());
+                assertEquals(302,failed.statusCode());
+                assertEquals("https://localhost/?oauth=failed",failed.headers().firstValue("Location").orElseThrow());
+                assertFalse(failed.body().contains("private-provider-error"));
+            }
+        }
+    }
 }

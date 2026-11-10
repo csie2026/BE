@@ -62,6 +62,7 @@ class HikingScoringIntegrationTests {
     @Autowired DataSource dataSource;
     @Autowired PlatformTransactionManager transactions;
     @Autowired HikingActivityService activityService;
+    @Autowired jakarta.persistence.EntityManager entityManager;
     MockMvc mvc;
     MockHttpSession owner;
     String identity;
@@ -101,14 +102,16 @@ class HikingScoringIntegrationTests {
         session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, security);
         return session;
     }
-    String body(String key) {
+    String body(String key) { return body(key, 1234.5); }
+    String body(String key, double distance) {
+        double endLat = 37.65 + Math.toDegrees(distance / 6_371_000);
         return """
             {"mountainId":%d,"courseId":%d,"startedAt":"2020-01-01T01:00:00Z",
-             "endedAt":"2020-01-01T03:00:00Z","distanceMeters":1234.5,
+             "endedAt":"2020-01-01T03:00:00Z","distanceMeters":%s,
              "elapsedMs":2700000,"completed":true,"clientRequestId":"%s",
-             "gpsSegments":[[{"lat":37.65,"lng":126.97,"accuracyMeters":50,"measuredAt":"2020-01-01T01:01:00Z"}]],
+             "gpsSegments":[[{"lat":37.65,"lng":126.97,"accuracyMeters":50,"measuredAt":"2020-01-01T01:01:00Z"},{"lat":%s,"lng":126.97,"accuracyMeters":50,"measuredAt":"2020-01-01T01:10:00Z"}]],
              "gpsEvidence":{"latitude":37.65,"longitude":126.97,"accuracyMeters":50,"recordedAt":"2020-01-01T01:01:00Z"}}
-            """.formatted(mountainId, courseId, key);
+            """.formatted(mountainId, courseId, distance, key, endLat);
     }
     ResultActions save(MockHttpSession session, String body) throws Exception {
         String csrf = mvc.perform(get("/api/csrf").session(session))
@@ -158,7 +161,7 @@ class HikingScoringIntegrationTests {
         for(int day=1;day<=4;day++) {
             String b=day(body(UUID.randomUUID().toString()),day);
             if(day>=3)b=mountain(b,otherMountain());
-            if(day==1||day==3)b=b.replace("\"completed\":true","\"completed\":false").replace("\"lat\":37.65","\"lat\":37.0");
+            if(day==1||day==3)b=b.replace("\"completed\":true","\"completed\":false").replace("\"lng\":126.97","\"lng\":126.0");
             save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.visitPoints").value(day==1||day==3?200:100))
                 .andExpect(jsonPath("$.scoring.summitPoints").value(day==1||day==3?0:70));
         }
@@ -169,13 +172,51 @@ class HikingScoringIntegrationTests {
     }
     @Test void thresholdAndGpsFailuresDoNotConsumeTheDay() throws Exception {
         String b=body(UUID.randomUUID().toString());
-        save(owner,b.replace("1234.5","499.99")).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("BELOW_MINIMUM"));
+        save(owner,body(UUID.randomUUID().toString(),499.99)).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("BELOW_MINIMUM"));
         save(owner,body(UUID.randomUUID().toString()).replace("T03:00:00Z","T03:02:00Z").replace("2700000","1199999")).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("BELOW_MINIMUM"));
         String old=withoutGps(body(UUID.randomUUID().toString()).replace("T03:00:00Z","T03:03:00Z"));
         save(owner,old).andExpect(status().isOk()).andExpect(jsonPath("$.scoring.status").value("GPS_REQUIRED"));
-        save(owner,body(UUID.randomUUID().toString()).replace("T03:00:00Z","T03:01:00Z").replace("1234.5","500").replace("2700000","1200000"))
+        save(owner,body(UUID.randomUUID().toString(),500).replace("T03:00:00Z","T03:01:00Z").replace("2700000","1200000"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.scoring.visitPoints").value(200));
         assertEquals(270,score()); assertEquals(4,count());
+    }
+    @Test void exaggeratedDistanceIsRejectedWithoutActivityOrScoreMutation() throws Exception {
+        save(owner,body(UUID.randomUUID().toString()).replace("1234.5", "9999"))
+            .andExpect(status().isBadRequest());
+        assertEquals(0,count()); assertEquals(0,events());
+    }
+    @Test void savedV1FingerprintAllowsOnlyItsExactRetryNotAnInflatedNewRequest() throws Exception {
+        String key = UUID.randomUUID().toString(), b = body(key);
+        save(owner,b).andExpect(status().isOk());
+        var old = new HikingActivityRequest(mountainId,courseId,Instant.parse("2020-01-01T01:00:00Z"),
+            Instant.parse("2020-01-01T03:00:00Z"),9999.0,2700000L,true,key,
+            new GpsEvidence(37.65,126.97,50.0,Instant.parse("2020-01-01T01:01:00Z")),
+            List.of(List.of(new com.ggmount.hiking.dto.GpsPointRequest(37.65,126.97,Instant.parse("2020-01-01T01:01:00Z"),50.0),
+                new com.ggmount.hiking.dto.GpsPointRequest(37.65+Math.toDegrees(1234.5/6_371_000),126.97,Instant.parse("2020-01-01T01:10:00Z"),50.0))));
+        jdbc.update("update hiking_activities set gps_validation_version=1,distance_meters=9999,request_fingerprint=? where id=?",
+            com.ggmount.hiking.service.HikingRequestFingerprint.of(old),activityId(key));
+        entityManager.clear(); // Reload the deliberately seeded pre-upgrade row, not the JPA cache.
+        String inflated = b.replace("1234.5","9999");
+        save(owner,inflated).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(activityId(key)));
+        save(owner,b).andExpect(status().isConflict());
+        save(owner,day(inflated.replace(key,UUID.randomUUID().toString()),2)).andExpect(status().isBadRequest());
+        assertEquals(1,count());
+    }
+    @Test void insufficientEvidenceIsSavedWithoutVisitPointsAndExactOldVersionRetriesStillWork() throws Exception {
+        String key = UUID.randomUUID().toString();
+        String b = body(key).replaceAll(",\\{\"lat\":[^}]+\"measuredAt\":\"2020-01-01T01:10:00Z\"}", "");
+        save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.distanceMeters").value(1234.5))
+            .andExpect(jsonPath("$.scoring.status").value("GPS_REQUIRED"));
+        assertEquals(0,score());
+        long id = activityId(key);
+        jdbc.update("update hiking_activities set gps_validation_version=1 where id=?",id);
+        save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(id));
+        save(owner,b.replace("1234.5","1235.5")).andExpect(status().isConflict());
+        String newKey = UUID.randomUUID().toString();
+        save(owner,day(b.replace(key,newKey),2)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.gpsValidationVersion").value(1))
+            .andExpect(jsonPath("$.scoring.status").value("GPS_REQUIRED"));
+        assertEquals(0,score()); assertEquals(2,count());
     }
     @Test void invalidGpsIsRejectedWithoutActivityOrScoreMutation() throws Exception {
         String b=body(UUID.randomUUID().toString());
@@ -203,9 +244,9 @@ class HikingScoringIntegrationTests {
         assertEquals(540,score());
     }
     @Test void lateUploadRebuildsTheDailyWinnerAndLeavesAuditEvents() throws Exception {
-        String late=body(UUID.randomUUID().toString()).replace("T01:00:00Z","T02:00:00Z").replace("T01:01:00Z","T02:01:00Z");
+        String late=body(UUID.randomUUID().toString()).replace("T01:00:00Z","T02:00:00Z").replace("T01:01:00Z","T02:01:00Z").replace("T01:10:00Z","T02:10:00Z");
         save(owner,late).andExpect(status().isOk());assertEquals(270,score());
-        String early=body(UUID.randomUUID().toString()).replace("\"completed\":true","\"completed\":false").replace("\"lat\":37.65","\"lat\":37.0");
+        String early=body(UUID.randomUUID().toString()).replace("\"completed\":true","\"completed\":false").replace("\"lng\":126.97","\"lng\":126.0");
         save(owner,early).andExpect(status().isOk());assertEquals(200,score());
         assertEquals(1,jdbc.queryForObject("select count(*) from hiking_daily_certifications where member_id=?",Integer.class,ownerId));
         assertTrue(jdbc.queryForObject("select count(*) from hiking_score_events where member_id=? and points_delta<0",Integer.class,ownerId)>0);
@@ -270,7 +311,7 @@ class HikingScoringIntegrationTests {
         } finally { pool.shutdownNow();TestTransaction.start(); }
     }
     @Test void mergedServerCompletionOverridesClientExpectationBeforeAwardingSummitPoints() throws Exception {
-        String b=body(UUID.randomUUID().toString()).replace("\"lat\":37.65","\"lat\":37.0");
+        String b=body(UUID.randomUUID().toString()).replace("\"lng\":126.97","\"lng\":126.0");
         save(owner,b).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(false))
             .andExpect(jsonPath("$.gpsValidationVersion").value(1))
             .andExpect(jsonPath("$.scoring.visitPoints").value(200))
