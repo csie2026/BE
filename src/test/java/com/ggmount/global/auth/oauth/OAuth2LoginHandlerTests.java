@@ -44,17 +44,26 @@ class OAuth2LoginHandlerTests {
     }
 
     @Test
-    void failureReturnsUnauthorizedWithoutExposingProviderDetails() throws Exception {
+    void failureReturnsToConfiguredFrontendWithoutExposingProviderDetailsOrFollowingReturnUrl() throws Exception {
         MockHttpServletResponse response = new MockHttpServletResponse();
-        new OAuth2LoginFailureHandler()
+        MockHttpServletRequest request = new MockHttpServletRequest();
+        request.setParameter("redirect", "https://attacker.invalid");
+        request.getSession().setAttribute(WebAttributes.AUTHENTICATION_EXCEPTION, "private error");
+        var cache = new HttpSessionRequestCache();
+        cache.saveRequest(request, response);
+        new OAuth2LoginFailureHandler("https://frontend.invalid")
             .onAuthenticationFailure(
-                new MockHttpServletRequest(),
+                request,
                 response,
                 new BadCredentialsException("private provider response")
             );
 
-        assertEquals(401, response.getStatus());
-        assertEquals("{\"error\":\"oauth_login_failed\"}", response.getContentAsString());
+        assertEquals(302, response.getStatus());
+        assertEquals("https://frontend.invalid/?oauth=failed", response.getRedirectedUrl());
+        assertEquals("no-store", response.getHeader("Cache-Control"));
+        assertNull(request.getSession().getAttribute(WebAttributes.AUTHENTICATION_EXCEPTION));
+        assertNull(cache.getRequest(request,response));
         assertFalse(response.getContentAsString().contains("private"));
+        assertFalse(response.getRedirectedUrl().contains("private"));
     }
 }
