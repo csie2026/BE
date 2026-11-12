@@ -66,7 +66,7 @@ jobs:
           BACKUP_JAR="$BACKUP_DIR/${JAR_NAME}.${GITHUB_RUN_ID}.bak"
           DEPLOY_STARTED=0
 
-          # 배포 실패 시 기존 JAR 복원
+          # 배포 실패 시 기존 JAR를 안전하게 복원
           rollback() {
             local original_exit=$?
             trap - ERR
@@ -74,17 +74,42 @@ jobs:
             if [ "$DEPLOY_STARTED" -eq 1 ]; then
               echo "Deployment failed. Rolling back..."
 
-              sudo systemctl stop "$SERVICE" || true
+              sudo -n systemctl stop "$SERVICE" || true
 
-              if cp "$BACKUP_JAR" "$DEPLOY_DIR/$JAR_NAME"; then
-                if sudo systemctl start "$SERVICE"; then
-                  echo "Previous JAR restored"
+              # 백업 파일을 임시 JAR로 복사한 후 원자적으로 교체
+              local restore_jar
+              restore_jar="$(mktemp "$DEPLOY_DIR/.topeak-restore.XXXXXXXX.jar")"
+
+              if cp "$BACKUP_JAR" "$restore_jar" &&
+                 test -s "$restore_jar" &&
+                 mv -f "$restore_jar" "$DEPLOY_DIR/$JAR_NAME"; then
+
+                if sudo -n systemctl start "$SERVICE"; then
+                  local restored=0
+
+                  for i in $(seq 1 30); do
+                    if sudo -n systemctl is-active --quiet "$SERVICE" &&
+                       curl --silent --fail --max-time 3 \
+                         "$HEALTH_URL" > /dev/null 2>&1; then
+                      restored=1
+                      break
+                    fi
+                    sleep 2
+                  done
+
+                  if [ "$restored" -eq 1 ]; then
+                    echo "Rollback successful: previous backend is healthy"
+                  else
+                    echo "ERROR: Rollback health check failed"
+                  fi
                 else
-                  echo "ERROR: Failed to restart previous JAR"
+                  echo "ERROR: Failed to restart previous backend"
                 fi
               else
                 echo "ERROR: Failed to restore previous JAR"
               fi
+
+              rm -f "$restore_jar"
             fi
 
             rm -f "$NEW_JAR"
@@ -95,19 +120,21 @@ jobs:
 
           # 새 JAR 준비 및 기존 JAR 백업
           cp "${jars[0]}" "$NEW_JAR"
+          test -s "$NEW_JAR"
           cp "$DEPLOY_DIR/$JAR_NAME" "$BACKUP_JAR"
+          test -s "$BACKUP_JAR"
 
-          # 서비스 교체
+          # 서비스 중지 및 JAR 교체
           DEPLOY_STARTED=1
-          sudo systemctl stop "$SERVICE"
+          sudo -n systemctl stop "$SERVICE"
           mv -f "$NEW_JAR" "$DEPLOY_DIR/$JAR_NAME"
-          sudo systemctl start "$SERVICE"
+          sudo -n systemctl start "$SERVICE"
 
           # 새 애플리케이션 정상 응답 확인
           HEALTHY=0
 
           for i in $(seq 1 30); do
-            if sudo systemctl is-active --quiet "$SERVICE"; then
+            if sudo -n systemctl is-active --quiet "$SERVICE"; then
               if curl --silent --show-error --fail \
                 --max-time 3 "$HEALTH_URL" \
                 > /dev/null 2>&1; then
@@ -124,6 +151,7 @@ jobs:
             false
           fi
 
+          DEPLOY_STARTED=0
           trap - ERR
           rm -f "$NEW_JAR"
 
