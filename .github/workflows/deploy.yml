@@ -1,0 +1,130 @@
+
+name: ToPeak BE CD
+
+on:
+  workflow_run:
+    workflows: ["ToPeak BE CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: topeak-be-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'push'
+          && github.event.workflow_run.head_branch == 'main'
+          && github.event.workflow_run.head_repository.full_name == github.repository }}
+
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 15
+
+    steps:
+      - name: Download CI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: topeak-be-jar
+          path: release
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Deploy backend
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          DEPLOY_DIR="/home/ubuntu/BE"
+          BACKUP_DIR="/home/ubuntu/BE-backups"
+          JAR_NAME="ggmount-0.0.1-SNAPSHOT.jar"
+          SERVICE="topeak-be"
+          HEALTH_URL="http://127.0.0.1:8080/api/csrf"
+
+          # CI 산출물 확인
+          mapfile -t jars < <(
+            find release -maxdepth 1 -type f \
+              -name '*.jar' ! -name '*.jar.original'
+          )
+
+          if [ "${#jars[@]}" -ne 1 ]; then
+            echo "ERROR: Expected exactly one JAR artifact"
+            exit 1
+          fi
+
+          test -s "${jars[0]}"
+          test -s "$DEPLOY_DIR/$JAR_NAME"
+
+          mkdir -p "$BACKUP_DIR"
+
+          NEW_JAR="$(mktemp "$DEPLOY_DIR/.topeak-new.XXXXXXXX.jar")"
+          BACKUP_JAR="$BACKUP_DIR/${JAR_NAME}.${GITHUB_RUN_ID}.bak"
+          DEPLOY_STARTED=0
+
+          # 배포 실패 시 기존 JAR 복원
+          rollback() {
+            local original_exit=$?
+            trap - ERR
+
+            if [ "$DEPLOY_STARTED" -eq 1 ]; then
+              echo "Deployment failed. Rolling back..."
+
+              sudo systemctl stop "$SERVICE" || true
+
+              if cp "$BACKUP_JAR" "$DEPLOY_DIR/$JAR_NAME"; then
+                if sudo systemctl start "$SERVICE"; then
+                  echo "Previous JAR restored"
+                else
+                  echo "ERROR: Failed to restart previous JAR"
+                fi
+              else
+                echo "ERROR: Failed to restore previous JAR"
+              fi
+            fi
+
+            rm -f "$NEW_JAR"
+            exit "$original_exit"
+          }
+
+          trap rollback ERR
+
+          # 새 JAR 준비 및 기존 JAR 백업
+          cp "${jars[0]}" "$NEW_JAR"
+          cp "$DEPLOY_DIR/$JAR_NAME" "$BACKUP_JAR"
+
+          # 서비스 교체
+          DEPLOY_STARTED=1
+          sudo systemctl stop "$SERVICE"
+          mv -f "$NEW_JAR" "$DEPLOY_DIR/$JAR_NAME"
+          sudo systemctl start "$SERVICE"
+
+          # 새 애플리케이션 정상 응답 확인
+          HEALTHY=0
+
+          for i in $(seq 1 30); do
+            if sudo systemctl is-active --quiet "$SERVICE"; then
+              if curl --silent --show-error --fail \
+                --max-time 3 "$HEALTH_URL" \
+                > /dev/null 2>&1; then
+                HEALTHY=1
+                break
+              fi
+            fi
+
+            sleep 2
+          done
+
+          if [ "$HEALTHY" -ne 1 ]; then
+            echo "ERROR: Backend health check failed"
+            false
+          fi
+
+          trap - ERR
+          rm -f "$NEW_JAR"
+
+          echo "Backend deployment successful"
