@@ -12,12 +12,15 @@ import org.springframework.http.HttpStatus;
 public class MemberService {
     private final MemberRepository repository;
     private final com.ggmount.member.repository.PersonalDataRepository personalData;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
     public MemberService(
         MemberRepository repository,
-        com.ggmount.member.repository.PersonalDataRepository personalData
+        com.ggmount.member.repository.PersonalDataRepository personalData,
+        org.springframework.jdbc.core.JdbcTemplate jdbc
     ) {
         this.repository = repository;
         this.personalData = personalData;
+        this.jdbc = jdbc;
     }
     public MemberResponse me(OAuthPrincipal principal) {
         return response(current(principal));
@@ -36,11 +39,18 @@ public class MemberService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
     // 대상 회원이 없으면 404, 프로필 설정이 미완료이면 403으로 거부하고 공개 응답만 구성한다.
-    public PublicMemberResponse publicProfile(Long id) {
+    public PublicProfileResponse publicProfile(Long id) {
         Member member = find(id);
         requireComplete(member);
         String revision = personalData.profileRevisions(java.util.List.of(id)).get(id);
-        return PublicMemberResponse.withImage(member, revision);
+        // 일지 유무·공개 여부와 무관하게 대상 회원의 저장된 활동만 집계한다.
+        return jdbc.queryForObject("""
+            SELECT COUNT(*) AS total_hikes,
+                COUNT(CASE WHEN completed = TRUE THEN 1 END) AS completed_hikes
+            FROM hiking_activities WHERE member_id = ?
+            """, (row, index) -> PublicProfileResponse.from(
+                PublicMemberResponse.withImage(member, revision),
+                row.getLong("total_hikes"), row.getLong("completed_hikes")), id);
     }
     public Member find(Long id) {
         return repository.findById(id)

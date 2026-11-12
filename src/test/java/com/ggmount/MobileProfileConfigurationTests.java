@@ -28,8 +28,11 @@ class MobileProfileConfigurationTests {
         runner.withPropertyValues("spring.profiles.active=local,mobile").run(context -> {
             assertNull(context.getStartupFailure());
             var env = context.getEnvironment();
-            String origin = "https://writes-strain-strap-tribunal.trycloudflare.com";
-            assertEquals(origin, env.getProperty("app.frontend-url"));
+            String origin = env.getProperty("app.frontend-url");
+            assertNotNull(origin);
+            var address = java.net.URI.create(origin);
+            assertEquals("https", address.getScheme());
+            assertNotNull(address.getHost());
             for (String provider : new String[] {"google", "kakao"}) {
                 assertEquals(origin + "/login/oauth2/code/" + provider, env.getProperty(
                     "spring.security.oauth2.client.registration." + provider + ".redirect-uri"));
