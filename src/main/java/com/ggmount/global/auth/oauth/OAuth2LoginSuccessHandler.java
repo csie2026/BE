@@ -16,14 +16,15 @@ public class OAuth2LoginSuccessHandler extends SimpleUrlAuthenticationSuccessHan
         this.frontendUrl = frontendUrl;
     }
 
+    /**
+     * 이전 오류·저장 요청을 정리하고 원래 요청 경로 대신 설정된 FE로 복귀한다.
+     */
     @Override
     public void onAuthenticationSuccess(
         HttpServletRequest request,
         HttpServletResponse response,
         Authentication authentication
     ) throws IOException {
-        // 공통 정보는 ((OAuthPrincipal) authentication.getPrincipal()).getUserInfo()로 접근합니다.
-        // 기존 세션 인증을 유지하며 토큰을 URL에 전달하지 않습니다.
         clearAuthenticationAttributes(request);
         new HttpSessionRequestCache().removeRequest(request, response);
         response.sendRedirect(frontendUrl + "/?oauth=success");

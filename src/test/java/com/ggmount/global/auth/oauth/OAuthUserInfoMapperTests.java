@@ -6,6 +6,7 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// Google·Kakao 속성 Map의 내부 사용자 정보 변환만 검사하며 외부 인증·HTTP·DB 저장은 수행하지 않는다.
 class OAuthUserInfoMapperTests {
 
     private final OAuthUserInfoMapper mapper = new OAuthUserInfoMapper();
@@ -38,6 +39,7 @@ class OAuthUserInfoMapperTests {
     }
 
     @Test
+    // Kakao의 숫자 ID와 중첩 계정·프로필 구조를 검사한다.
     void mapsKakaoNestedProfileAndNumericId() {
         OAuthUserInfo result = mapper.map(
             "kakao",

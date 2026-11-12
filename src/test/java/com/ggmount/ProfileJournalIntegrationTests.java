@@ -48,8 +48,9 @@ class ProfileJournalIntegrationTests {
             .build();
     }
     @Test
-    void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exception {
-        var authenticated = session("mountain-selection");
+void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exception {
+    oauth.processLogin(info("mountain-selection"));
+    var authenticated = session("mountain-selection");
         mvc.perform(get("/api/mountains")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/mountains").session(authenticated))
         .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(140));
@@ -91,7 +92,7 @@ class ProfileJournalIntegrationTests {
         );
     }
     MockHttpSession session(String id) {
-        var p = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id));
+        var p = new OAuthPrincipal(List.of(), Map.of("sub", id), "sub", info(id), members.findByProviderAndProviderId("google",id).orElseThrow().getId());
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(p, p.getAuthorities(), "google"));
         var session = new MockHttpSession();
@@ -120,7 +121,7 @@ class ProfileJournalIntegrationTests {
             .session(session)
             .header("X-CSRF-TOKEN", csrf(session))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"Trail user\",\"birthYear\":2003}"))
+            .content("{\"expectedUserId\":" + m.getId() + ",\"nickname\":\"Trail user\",\"birthYear\":2003}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.profileCompleted").value(true))
             .andExpect(jsonPath("$.age").value(Year.now().getValue() - 2003 + 1));
@@ -130,14 +131,50 @@ class ProfileJournalIntegrationTests {
         assertTrue(returning.isProfileCompleted());
     }
     @Test
+    void ownAccountDetailsKeepOriginalJoinTimeAndStayOutOfPublicProfile() throws Exception {
+        Member member = oauth.processLogin(info("account-details"));
+        member.completeProfile("Account user", 2003);
+        members.flush();
+        var originalJoinTime = member.getJoinedAt();
+        assertNotNull(originalJoinTime);
+        var authenticated = session("account-details");
+        mvc.perform(get("/api/users/me").session(authenticated))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.provider").value("google"))
+            .andExpect(jsonPath("$.email").value("private@example.com"))
+            .andExpect(jsonPath("$.joinedAt").isString());
+        assertEquals(originalJoinTime, oauth.processLogin(info("account-details")).getJoinedAt());
+        mvc.perform(get("/api/users/" + member.getId() + "/profile").session(authenticated))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.email").doesNotExist())
+            .andExpect(jsonPath("$.provider").doesNotExist())
+            .andExpect(jsonPath("$.joinedAt").doesNotExist());
+        mvc.perform(get("/api/rankings/summary").session(authenticated))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.members[*].email").isEmpty())
+            .andExpect(jsonPath("$.members[*].provider").isEmpty())
+            .andExpect(jsonPath("$.members[*].joinedAt").isEmpty());
+    }
+    @Test
+    void legacyMemberUnknownJoinTimeRemainsUnknownAfterRelogin() throws Exception {
+        Member member = oauth.processLogin(info("legacy-account-details"));
+        members.flush();
+        jdbc.update("update members set joined_at=null where id=?", member.getId());
+        entityManager.clear();
+        var authenticated = session("legacy-account-details");
+        mvc.perform(get("/api/users/me").session(authenticated))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.joinedAt").doesNotExist());
+        assertNull(oauth.processLogin(info("legacy-account-details")).getJoinedAt());
+    }
+    @Test
     void validatesYearAndNicknameAndRejectsInvalidApiRequests() throws Exception {
-        assertFalse(validator.validate(new MemberUpdateRequest("a", 1900)).size() > 0);
-        assertFalse(validator.validate(new MemberUpdateRequest("a", Year.now().getValue())).size() > 0);
+        assertFalse(validator.validate(new MemberUpdateRequest(1L, "a", 1900)).size() > 0);
+        assertFalse(validator.validate(new MemberUpdateRequest(1L, "a", Year.now().getValue())).size() > 0);
         for (Integer year : Arrays.asList(null, 1899, Year.now().getValue() + 1))
-            assertFalse(validator.validate(new MemberUpdateRequest("a", year))
+            assertFalse(validator.validate(new MemberUpdateRequest(1L, "a", year))
                 .isEmpty());
-        assertFalse(validator.validate(new MemberUpdateRequest(" ", 2003)).isEmpty());
-        oauth.processLogin(info("invalid"));
+        assertFalse(validator.validate(new MemberUpdateRequest(1L, " ", 2003)).isEmpty());
+        var invalidMember = oauth.processLogin(info("invalid"));
         var session = session("invalid");
         String token = csrf(session);
         for (String year : List.of(
@@ -151,7 +188,7 @@ class ProfileJournalIntegrationTests {
             .session(session)
             .header("X-CSRF-TOKEN", token)
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"a\",\"birthYear\":" + year + "}"))
+            .content("{\"expectedUserId\":" + invalidMember.getId() + ",\"nickname\":\"a\",\"birthYear\":" + year + "}"))
             .andExpect(status().isBadRequest());
     }
     @Test
@@ -192,7 +229,8 @@ class ProfileJournalIntegrationTests {
         mvc.perform(get("/api/rankings").session(viewerSession))
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[0].userId").value(owner.getId()))
-            .andExpect(jsonPath("$[0].score").isEmpty());
+            // 연결된 공개 일지는 산별 보너스를 받지만 구형 GPS 요약만으로는 방문 점수가 생기지 않는다.
+            .andExpect(jsonPath("$[0].score").value(50));
         String id = privateResponse.split("\"id\":")[1].split(",")[0];
         String update = "{\"title\":\"Changed\",\"content\":\"text\",\"isPublic\":true}";
         mvc.perform(patch("/api/journals/" + id)
@@ -222,8 +260,11 @@ class ProfileJournalIntegrationTests {
             .getNickname()
         );
     }
+    private int activitySequence;
     String createActivity(MockHttpSession session) throws Exception {
-        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T01:00:00Z\",\"endedAt\":\"2020-01-01T02:00:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":true,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        var start = java.time.Instant.parse("2020-01-01T01:00:00Z").plusSeconds(activitySequence++);
+        String body = "{\"mountainId\":1,\"startedAt\":\"" + start + "\",\"endedAt\":\"" + start.plusSeconds(3600)
+            + "\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":true,\"gpsSegments\":[],\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
         String response = mvc.perform(post("/api/users/me/hiking-records")
             .session(session).header("X-CSRF-TOKEN", csrf(session))
             .contentType(MediaType.APPLICATION_JSON).content(body))
@@ -479,7 +520,7 @@ class ProfileJournalIntegrationTests {
         oauth.processLogin(info("retry-owner")).completeProfile("Owner", 2003);
         members.flush();
         var owner = session("retry-owner");
-        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T15:30:00Z\",\"endedAt\":\"2020-01-01T16:30:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":false,\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
+        String body = "{\"mountainId\":1,\"startedAt\":\"2020-01-01T15:30:00Z\",\"endedAt\":\"2020-01-01T16:30:00Z\",\"distanceMeters\":2000,\"elapsedMs\":3600000,\"completed\":false,\"gpsSegments\":[],\"clientRequestId\":\"" + UUID.randomUUID() + "\"}";
         String id = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             String response = mvc.perform(post("/api/users/me/hiking-records").session(owner)

@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// 기본 테스트 H2와 실제 보안 필터·이미지 처리·DB 저장을 사용한다. 공급자 로그인은 세션 구성으로 대체하며 대부분 테스트는 롤백된다.
 @SpringBootTest
 @Transactional
 class MemberImageIntegrationTests {
@@ -63,8 +64,8 @@ class MemberImageIntegrationTests {
             "Social name",
             "https://example.com/social.png"
         );
-        oauth.processLogin(info);
-        var principal = new OAuthPrincipal(List.of(), Map.of("sub", identity), "sub", info);
+        var boundMember = oauth.processLogin(info);
+        var principal = new OAuthPrincipal(List.of(), Map.of("sub", identity), "sub", info, boundMember.getId());
         var security = SecurityContextHolder.createEmptyContext();
         security.setAuthentication(new OAuth2AuthenticationToken(
             principal,
@@ -106,9 +107,12 @@ class MemberImageIntegrationTests {
     }
 
     void complete(MockHttpSession session) throws Exception {
+        var security = (org.springframework.security.core.context.SecurityContext) session.getAttribute(
+            HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+        var principal = (OAuthPrincipal) security.getAuthentication().getPrincipal();
         mvc.perform(patch("/api/users/me/profile").session(session).header("X-CSRF-TOKEN", csrf(session))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"Chosen\",\"birthYear\":2003}"))
+            .content("{\"expectedUserId\":" + principal.getMemberId() + ",\"nickname\":\"Chosen\",\"birthYear\":2003}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.profileCompleted").value(true));
     }
 
@@ -296,7 +300,51 @@ class MemberImageIntegrationTests {
     }
 
     @Test
+    void rejectedLogoutKeepsSessionAndFreshCsrfCanRetry() throws Exception {
+        var session = login("google", "logout-retry");
+        for (String token : List.of("", "invalid-token")) {
+            var request = post("/api/logout").session(session);
+            if (!token.isEmpty()) request.header("X-CSRF-TOKEN", token);
+            mvc.perform(request).andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.error").value("invalid_csrf"));
+            assertFalse(session.isInvalid());
+            mvc.perform(get("/api/users/me").session(session)).andExpect(status().isOk());
+        }
+        String oldId = session.getId();
+        mvc.perform(post("/api/logout").session(session).header("X-CSRF-TOKEN", csrf(session)))
+            .andExpect(status().isNoContent());
+        assertTrue(session.isInvalid());
+        mvc.perform(get("/api/users/me").cookie(new jakarta.servlet.http.Cookie("JSESSIONID", oldId)))
+            .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/users/me/hiking-records").cookie(new jakarta.servlet.http.Cookie("JSESSIONID", oldId)))
+            .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void profileMemberIdInBodyCannotChangeAnotherMemberOrExposePrivateFields() throws Exception {
+        var owner = login("google", "profile-body-owner");
+        var other = login("google", "profile-body-other");
+        complete(owner);
+        complete(other);
+        Long otherId = members.findByProviderAndProviderId("google", "profile-body-other").orElseThrow().getId();
+        Long ownerId = members.findByProviderAndProviderId("google", "profile-body-owner").orElseThrow().getId();
+        mvc.perform(patch("/api/users/me/profile").session(owner).header("X-CSRF-TOKEN", csrf(owner))
+            .contentType(MediaType.APPLICATION_JSON)
+            .content("{\"expectedUserId\":" + ownerId + ",\"nickname\":\"Owner changed\",\"birthYear\":2001,\"userId\":" + otherId + "}"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.nickname").value("Owner changed"));
+        mvc.perform(get("/api/users/me").session(other))
+            .andExpect(jsonPath("$.nickname").value("Chosen"));
+        mvc.perform(get("/api/users/" + otherId + "/profile").session(owner))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.email").doesNotExist())
+            .andExpect(jsonPath("$.birthYear").doesNotExist())
+            .andExpect(jsonPath("$.providerId").doesNotExist())
+            .andExpect(jsonPath("$.backgroundImageUrl").doesNotExist());
+    }
+
+    @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    // 이 사례만 테스트 트랜잭션을 중단해 커밋 후 새 로그인에서 다시 읽는다. 저장 자료는 finally에서 직접 정리한다.
     void committedImagesAndProfileRemainAfterNewLoginTransaction() throws Exception {
         String identity = "committed-" + java.util.UUID.randomUUID();
         try {
