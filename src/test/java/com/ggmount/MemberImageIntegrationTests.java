@@ -107,9 +107,12 @@ class MemberImageIntegrationTests {
     }
 
     void complete(MockHttpSession session) throws Exception {
+        var security = (org.springframework.security.core.context.SecurityContext) session.getAttribute(
+            HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+        var principal = (OAuthPrincipal) security.getAuthentication().getPrincipal();
         mvc.perform(patch("/api/users/me/profile").session(session).header("X-CSRF-TOKEN", csrf(session))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"Chosen\",\"birthYear\":2003}"))
+            .content("{\"expectedUserId\":" + principal.getMemberId() + ",\"nickname\":\"Chosen\",\"birthYear\":2003}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.profileCompleted").value(true));
     }
 
@@ -324,9 +327,10 @@ class MemberImageIntegrationTests {
         complete(owner);
         complete(other);
         Long otherId = members.findByProviderAndProviderId("google", "profile-body-other").orElseThrow().getId();
+        Long ownerId = members.findByProviderAndProviderId("google", "profile-body-owner").orElseThrow().getId();
         mvc.perform(patch("/api/users/me/profile").session(owner).header("X-CSRF-TOKEN", csrf(owner))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"Owner changed\",\"birthYear\":2001,\"userId\":" + otherId + "}"))
+            .content("{\"expectedUserId\":" + ownerId + ",\"nickname\":\"Owner changed\",\"birthYear\":2001,\"userId\":" + otherId + "}"))
             .andExpect(status().isOk()).andExpect(jsonPath("$.nickname").value("Owner changed"));
         mvc.perform(get("/api/users/me").session(other))
             .andExpect(jsonPath("$.nickname").value("Chosen"));

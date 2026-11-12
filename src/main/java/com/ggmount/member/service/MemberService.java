@@ -43,10 +43,12 @@ public class MemberService {
         Member member = find(id);
         requireComplete(member);
         String revision = personalData.profileRevisions(java.util.List.of(id)).get(id);
-        // 일지 유무·공개 여부와 무관하게 대상 회원의 저장된 활동만 집계한다.
+        // 점수 상태·원장·일지와 독립적으로 저장 거리·시간 또는 서버 검증 완등을 활동마다 집계한다.
+        // GPS 검증 버전 1의 completed만 서버 판정 근거가 있으며, 구버전 완료 플래그는 제외한다.
         return jdbc.queryForObject("""
-            SELECT COUNT(*) AS total_hikes,
-                COUNT(CASE WHEN completed = TRUE THEN 1 END) AS completed_hikes
+            SELECT COUNT(CASE WHEN (distance_meters >= 500 AND elapsed_ms >= 1200000)
+                    OR (completed = TRUE AND gps_validation_version = 1) THEN 1 END) AS total_hikes,
+                COUNT(CASE WHEN completed = TRUE AND gps_validation_version = 1 THEN 1 END) AS completed_hikes
             FROM hiking_activities WHERE member_id = ?
             """, (row, index) -> PublicProfileResponse.from(
                 PublicMemberResponse.withImage(member, revision),
@@ -60,6 +62,8 @@ public class MemberService {
     // 요청 DTO 검증을 통과한 닉네임·출생연도를 저장하고 프로필 완료 상태로 전환한다.
     public MemberResponse update(OAuthPrincipal p, MemberUpdateRequest request) {
         Member member = current(p);
+        // 수정 대상은 Principal로만 결정하며, 예상 ID는 편집 대상 일치 여부 확인에만 사용한다.
+        if (!member.getId().equals(request.expectedUserId())) throw new ProfileAccountMismatch();
         member.completeProfile(request.nickname(), request.birthYear());
         return response(member);
     }

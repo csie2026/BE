@@ -121,7 +121,7 @@ void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exc
             .session(session)
             .header("X-CSRF-TOKEN", csrf(session))
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"Trail user\",\"birthYear\":2003}"))
+            .content("{\"expectedUserId\":" + m.getId() + ",\"nickname\":\"Trail user\",\"birthYear\":2003}"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.profileCompleted").value(true))
             .andExpect(jsonPath("$.age").value(Year.now().getValue() - 2003 + 1));
@@ -168,13 +168,13 @@ void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exc
     }
     @Test
     void validatesYearAndNicknameAndRejectsInvalidApiRequests() throws Exception {
-        assertFalse(validator.validate(new MemberUpdateRequest("a", 1900)).size() > 0);
-        assertFalse(validator.validate(new MemberUpdateRequest("a", Year.now().getValue())).size() > 0);
+        assertFalse(validator.validate(new MemberUpdateRequest(1L, "a", 1900)).size() > 0);
+        assertFalse(validator.validate(new MemberUpdateRequest(1L, "a", Year.now().getValue())).size() > 0);
         for (Integer year : Arrays.asList(null, 1899, Year.now().getValue() + 1))
-            assertFalse(validator.validate(new MemberUpdateRequest("a", year))
+            assertFalse(validator.validate(new MemberUpdateRequest(1L, "a", year))
                 .isEmpty());
-        assertFalse(validator.validate(new MemberUpdateRequest(" ", 2003)).isEmpty());
-        oauth.processLogin(info("invalid"));
+        assertFalse(validator.validate(new MemberUpdateRequest(1L, " ", 2003)).isEmpty());
+        var invalidMember = oauth.processLogin(info("invalid"));
         var session = session("invalid");
         String token = csrf(session);
         for (String year : List.of(
@@ -188,7 +188,7 @@ void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exc
             .session(session)
             .header("X-CSRF-TOKEN", token)
             .contentType(MediaType.APPLICATION_JSON)
-            .content("{\"nickname\":\"a\",\"birthYear\":" + year + "}"))
+            .content("{\"expectedUserId\":" + invalidMember.getId() + ",\"nickname\":\"a\",\"birthYear\":" + year + "}"))
             .andExpect(status().isBadRequest());
     }
     @Test

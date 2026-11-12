@@ -120,7 +120,7 @@ class OAuthMemberCreationIntegrationTests {
     void completedProfileSurvivesReturningLogin(String provider) {
         var principal = login(provider, true);
         var id = committedMember(provider).getId();
-        members.update(principal, new MemberUpdateRequest("Chosen nickname", 2003));
+        members.update(principal, new MemberUpdateRequest(id, "Chosen nickname", 2003));
         login(provider, true);
         var returning = committedMember(provider);
         assertEquals(id, returning.getId());
