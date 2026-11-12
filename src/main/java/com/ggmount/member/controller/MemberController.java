@@ -30,7 +30,7 @@ public class MemberController {
         return service.update(p, request);
     }
     @GetMapping("/{id}/profile")
-    public ResponseEntity<PublicMemberResponse> profile(@PathVariable Long id) {
+    public ResponseEntity<PublicProfileResponse> profile(@PathVariable Long id) {
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.publicProfile(id));
     }
 }
