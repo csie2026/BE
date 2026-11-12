@@ -25,7 +25,8 @@ public class MemberService {
     private MemberResponse response(Member member) {
         return MemberResponse.withImages(member, personalData.imageRevisions(member.getId()));
     }
-    // 요청의 임의 회원 ID 대신 세션의 OAuth 식별자로 내부 회원을 찾아 본인 데이터의 기준으로 삼는다.
+    // 세션의 내부 회원 ID로 조회한 뒤 공급자·공급자 사용자 ID도 일치하는 회원을 본인 데이터의 기준으로 삼는다.
+    // principal 또는 memberId가 없거나, 조회 회원이 없거나 공급자 정보가 다르면 401로 거부한다.
     public Member current(OAuthPrincipal principal) {
         if (principal == null || principal.getMemberId() == null)
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
@@ -34,6 +35,7 @@ public class MemberService {
             .filter(member -> member.getProvider().equals(info.provider()) && member.getProviderId().equals(info.providerId()))
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED));
     }
+    // 대상 회원이 없으면 404, 프로필 설정이 미완료이면 403으로 거부하고 공개 응답만 구성한다.
     public PublicMemberResponse publicProfile(Long id) {
         Member member = find(id);
         requireComplete(member);

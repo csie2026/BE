@@ -15,6 +15,7 @@ import java.time.Instant;
 )
 @Getter
 public class Member {
+    // 공급자 계정 식별 정보와 구분되는 내부 회원 ID이며, 데이터베이스에서 자동 생성한다.
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -32,9 +33,9 @@ public class Member {
     @Column(nullable = false)
     // 최초 OAuth 로그인만으로는 완료되지 않으며 사용자가 닉네임·출생연도를 저장해야 활성화된다.
     private boolean profileCompleted;
-    // Null means no ranking score has been calculated yet.
+    // 순위 점수를 아직 산정하지 않은 회원은 점수가 null이다.
     private Long score;
-    // Unknown for members created before this field was introduced. Never derive from activity dates.
+    // 가입 시각 필드 도입 전 회원의 가입 시각은 알 수 없으며, 활동 날짜로 추정하지 않는다.
     @Column(name = "joined_at", updatable = false)
     private Instant joinedAt;
 
@@ -53,6 +54,7 @@ public class Member {
                 .substring(0, Math.min(30, info.nickname().length()));
         refreshOAuth(info);
     }
+    // 공급자에서 받은 이메일과 프로필 이미지만 갱신하고 사용자가 설정한 닉네임·출생연도는 유지한다.
     public void refreshOAuth(OAuthUserInfo info) {
         email = info.email();
         profileImageUrl = info.profileImage();
@@ -67,6 +69,7 @@ public class Member {
         if (points < 0) throw new IllegalArgumentException("점수는 음수일 수 없습니다.");
         score = points;
     }
+    // 출생연도가 있으면 현재 연도와의 차이에 1을 더한 나이를 반환한다.
     public Integer age() {
         return birthYear == null ? null : Year.now().getValue() - birthYear + 1;
     }

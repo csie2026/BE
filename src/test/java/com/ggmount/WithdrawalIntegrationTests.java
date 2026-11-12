@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** Committed HTTP requests, not an outer rollback transaction. Never uses the operational DB. */
+/** 전용 메모리 H2에서 보안 필터를 거친 모의 HTTP 요청의 실제 커밋을 검사하며, 전체를 감싸는 롤백 트랜잭션은 사용하지 않는다. */
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:withdrawal_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",
@@ -146,9 +146,10 @@ class WithdrawalIntegrationTests {
         var owner = member("kakao"); var info = owner.principal().getUserInfo();
         delete(owner, owner.id(), "탈퇴").andExpect(status().isNoContent());
         assertEquals(0L, jdbc.queryForObject("select count(*) from members where provider=? and provider_id=?", Long.class, info.provider(), info.providerId()));
-        assertNotEquals(owner.id(), oauth.processLogin(info).getId()); // No provider API call is involved.
+        assertNotEquals(owner.id(), oauth.processLogin(info).getId()); // 공급자 API 호출 없이 내부 회원 서비스를 직접 사용한다.
     }
     @Test void authenticationCsrfConfirmationAndAccountSwitchPreconditionAreRequired() throws Exception {
+        // 세션 없는 DELETE도 CSRF 토큰이 없으므로 인증 진입점보다 앞선 CSRF 거부를 관찰한다.
         var owner = member("google"); var other = member("google");
         mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete("/api/users/me"))
             .andExpect(status().isForbidden());
@@ -169,6 +170,7 @@ class WithdrawalIntegrationTests {
         assertEquals(1, count("members", owner.id()));
     }
     @Test void failedDeleteRollsBackEveryDependentRowAndKeepsSessionUsable() throws Exception {
+        // 회원을 참조하는 임시 외래 키로 마지막 회원 삭제를 실패시켜 앞선 삭제의 롤백을 확인하며, 컨트롤러 정리는 실행하지 않는다.
         var owner = member("google"); seedPersonalData(owner);
         jdbc.execute("create table withdrawal_test_guard(member_id bigint references members(id))");
         try {

@@ -15,6 +15,7 @@ public class MemberController {
     public MemberController(MemberService service) {
         this.service = service;
     }
+    // 인증 사용자 정보로 본인 회원을 확인하며, 조회 응답은 캐시에 저장하지 않도록 지정한다.
     @GetMapping("/me")
     public ResponseEntity<MemberResponse> me(@AuthenticationPrincipal OAuthPrincipal p) {
         return ResponseEntity.ok()

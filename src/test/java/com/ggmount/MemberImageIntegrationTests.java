@@ -33,6 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// 기본 테스트 H2와 실제 보안 필터·이미지 처리·DB 저장을 사용한다. 공급자 로그인은 세션 구성으로 대체하며 대부분 테스트는 롤백된다.
 @SpringBootTest
 @Transactional
 class MemberImageIntegrationTests {
@@ -339,6 +340,7 @@ class MemberImageIntegrationTests {
 
     @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    // 이 사례만 테스트 트랜잭션을 중단해 커밋 후 새 로그인에서 다시 읽는다. 저장 자료는 finally에서 직접 정리한다.
     void committedImagesAndProfileRemainAfterNewLoginTransaction() throws Exception {
         String identity = "committed-" + java.util.UUID.randomUUID();
         try {

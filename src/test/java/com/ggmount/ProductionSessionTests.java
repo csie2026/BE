@@ -11,6 +11,7 @@ import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.ActiveProfiles;
 import static org.junit.jupiter.api.Assertions.*;
 
+// prod의 프록시·쿠키 설정을 임의 포트 로컬 서버에서 검사한다. HTTP로 응답 헤더를 읽으며 브라우저의 Secure 쿠키 전송은 검증하지 않는다.
 @ActiveProfiles("prod")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
     properties = "FRONTEND_URL=https://localhost")
@@ -58,7 +59,7 @@ class ProductionSessionTests {
 
     @Test void providerCancellationReturnsToFrontendThroughTheRealSecurityFilterWithoutProviderCalls() throws Exception {
         var base = URI.create("http://127.0.0.1:" + port);
-        // Redirects are deliberately not followed: every request stays on the local test server.
+        // 리다이렉트를 따라가지 않아 요청은 로컬 서버에만 전송된다. 공급자 취소 콜백은 직접 구성한다.
         try (var client = HttpClient.newHttpClient()) {
             for (String provider : new String[]{"google","kakao"}) {
                 var start = client.send(HttpRequest.newBuilder(base.resolve("/oauth2/authorization/" + provider)).build(),

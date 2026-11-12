@@ -33,8 +33,8 @@ public class PersonalDataService {
             new ResponseStatusException(HttpStatus.NOT_FOUND, "이미지가 없거나 현재 계정의 이미지 URL이 아닙니다."));
     }
 
-    // Only uploaded profile images are shared with authenticated public-profile readers.
-    // Background images and all modification routes remain owner-only.
+    // 공개 조회는 프로필 설정이 완료된 회원의 업로드 프로필 이미지만 대상으로 하며 배경 이미지는 조회하지 않는다.
+    // 회원이 없으면 404, 프로필 미완료이면 403이며, revision이 없거나 현재 이미지와 일치하지 않으면 404로 거부한다.
     public ImageUploadValidator.ImageData publicProfileImage(long memberId, String revision) {
         var target = members.find(memberId);
         members.requireComplete(target);
@@ -56,6 +56,8 @@ public class PersonalDataService {
     }
 
     @Transactional
+    // 현재 인증 회원의 이미지 종류만 삭제하며, 저장과 같은 회원 행 잠금을 사용한다.
+    // 저장소의 데이터 접근 예외는 여기서 변환하지 않고 호출부로 전파한다.
     public void deleteImage(OAuthPrincipal principal, String kind) {
         Long memberId = members.current(principal).getId();
         String selectedKind = imageKind(kind);
@@ -63,6 +65,7 @@ public class PersonalDataService {
         data.deleteImage(memberId, selectedKind);
     }
 
+    // 프로필·배경 이외의 이미지 종류는 저장·조회·삭제 대상으로 허용하지 않고 404로 거부한다.
     private String imageKind(String kind) {
         if (!"profile".equals(kind) && !"background".equals(kind)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "지원하지 않는 이미지 종류입니다.");

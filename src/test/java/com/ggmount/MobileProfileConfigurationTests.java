@@ -6,7 +6,7 @@ import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-// Configuration-only checks: no web server, database connection, or provider requests.
+// 설정만 로딩하며 웹 서버·DB 연결·인증 제공자 요청은 실행하지 않는다.
 class MobileProfileConfigurationTests {
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
         .withInitializer(new ConfigDataApplicationContextInitializer())

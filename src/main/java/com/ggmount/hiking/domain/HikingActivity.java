@@ -8,7 +8,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 
-/** Actual completed GPS session; HikingRecord remains the existing journal entity. */
+/** 저장된 산행 활동으로, 등산일지인 HikingRecord와 별도로 관리한다. */
 @Entity
 @Table(name = "hiking_activities")
 @Getter
@@ -53,7 +53,7 @@ public class HikingActivity {
         requestFingerprintVersion = com.ggmount.hiking.service.HikingRequestFingerprint.VERSION;
         requestFingerprint = fingerprint;
     }
-    // Only a canonical fingerprint is persisted: no precise GPS coordinates in the activity table.
+    // 선택적 GPS 표본은 SHA-256 해시로 저장하며, 활동 테이블에 정밀 좌표를 남기지 않는다.
     public static String evidenceHash(HikingActivityRequest request) {
         var e = request.gpsEvidence();
         if (e == null) return null;

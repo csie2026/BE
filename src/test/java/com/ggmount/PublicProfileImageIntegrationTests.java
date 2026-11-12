@@ -27,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// 전용 H2의 이미지 바이트·revision을 실제 서비스로 다루고, 모의 인증 세션을 통해 본인·공개 경로와 랭킹 응답을 대조한다.
 @SpringBootTest(properties={
  "spring.datasource.url=jdbc:h2:mem:public_images_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
  "spring.datasource.username=sa","spring.datasource.password=","spring.datasource.driver-class-name=org.h2.Driver",

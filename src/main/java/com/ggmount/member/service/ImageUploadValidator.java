@@ -20,6 +20,7 @@ public class ImageUploadValidator {
     public record ImageData(byte[] content, String mediaType) {
     }
 
+    // 빈 파일은 400으로 거부하고, 신고된 크기와 실제 읽은 바이트 수 모두 5MiB 이하인지 확인한다.
     public ImageData validate(MultipartFile file) {
         if (file.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "이미지를 선택해주세요.");
@@ -35,6 +36,7 @@ public class ImageUploadValidator {
             return decode(bytes);
         }
         catch (IOException e) {
+            // 파일 읽기·이미지 처리 중 입출력 실패는 정상 이미지가 아닌 것으로 처리해 400을 반환한다.
             throw invalidImage();
         }
     }
@@ -57,6 +59,7 @@ public class ImageUploadValidator {
                     throw invalidImage();
                 }
                 reader.setInput(stream, true, true);
+                // PNG·JPEG만 허용하며 첫 이미지의 각 변은 1~4096px, 전체는 1600만 픽셀 이하로 제한한다.
                 int width = reader.getWidth(0);
                 int height = reader.getHeight(0);
                 if (width < 1 || height < 1 || width > MAX_SIDE || height > MAX_SIDE
@@ -69,10 +72,11 @@ public class ImageUploadValidator {
                 var decoded = reader.read(0);
                 var output = new ByteArrayOutputStream();
                 boolean png = format.equals("png");
-                // Re-encode so filenames, metadata and appended content are not stored.
+                // 원본 파일명·메타데이터·뒤에 붙은 데이터를 그대로 저장하지 않고 디코딩한 픽셀로 다시 인코딩한다.
                 if (!ImageIO.write(decoded, png ? "png" : "jpeg", output)) {
                     throw invalidImage();
                 }
+                // 재인코딩 결과도 5MiB를 넘으면 413으로 거부한다.
                 if (output.size() > MAX_BYTES) {
                     throw tooLarge();
                 }

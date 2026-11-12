@@ -7,8 +7,10 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
+// 모의 Servlet 요청으로 필터를 직접 호출한다. 길이 미지정 본문도 검사하지만 실제 HTTP 전송은 별도 테스트에서 다룬다.
 class HikingActivityBodyLimitTests {
     @Test void requestDiagnosticsDoNotExposeEvidence() {
+        // 문자열 변환의 고정 문구만 검사하며 로그 수집이나 JSON 직렬화 전체의 비노출을 검증하지는 않는다.
         var point = new com.ggmount.hiking.dto.GpsPointRequest(37.123456, 127.654321, java.time.Instant.EPOCH, 5.0);
         var request = new com.ggmount.hiking.dto.HikingActivityRequest(1L, null, java.time.Instant.EPOCH,
             java.time.Instant.EPOCH, 0.0, 0L, true, "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",

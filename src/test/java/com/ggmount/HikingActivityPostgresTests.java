@@ -41,11 +41,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** Opt in only with a freshly created, dedicated local PostgreSQL test database.
+/** 새로 만든 전용 로컬 PostgreSQL 테스트 DB를 지정한 경우에만 실행한다.
  * mvn -Dtest=HikingActivityPostgresTests
  * -Dtopeak.postgres.test-url=jdbc:postgresql://127.0.0.1:55439/uuid_idempotency_regression
  * -Dtopeak.postgres.test-user=uuid_test_admin test
- * No outer @Transactional: requests must commit and reload through separate transactions.
+ * 외부 @Transactional 없이 요청별 트랜잭션이 커밋된 결과를 다시 조회한다.
  */
 @SpringBootTest(properties = {
     "spring.profiles.active=uuid-regression",
@@ -60,15 +60,14 @@ class HikingActivityPostgresTests {
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) {
         String url = System.getProperty("topeak.postgres.test-url");
-        // Validate before context startup / Flyway, not after potentially writing to a wrong DB.
+        // 잘못된 DB에 쓰기 전에 차단하도록 컨텍스트 시작과 Flyway 실행 전에 검사한다.
         if (url == null || !url.matches("jdbc:postgresql://127\\.0\\.0\\.1:[0-9]+/uuid_idempotency_regression(?:_[a-z0-9]+)?"))
             throw new IllegalArgumentException("A dedicated local uuid_idempotency_regression DB is required");
         properties.add("spring.datasource.url", () -> url);
         properties.add("spring.datasource.username", () -> System.getProperty("topeak.postgres.test-user", "uuid_test_admin"));
         properties.add("spring.datasource.password", () -> System.getProperty("topeak.postgres.test-password",
             System.getenv().getOrDefault("TOPEAK_TEST_PASSWORD", "")));
-        // Flyway must use the same guarded target even if external configuration
-        // defines a separate migration connection. Never fall back to a dev DB.
+        // 외부에 별도 마이그레이션 연결 설정이 있어도 Flyway는 검증된 동일 DB를 사용해야 한다.
         properties.add("spring.datasource.driver-class-name", () -> "org.postgresql.Driver");
         properties.add("spring.flyway.url", () -> url);
         properties.add("spring.flyway.user", () -> System.getProperty("topeak.postgres.test-user", "uuid_test_admin"));
@@ -165,7 +164,7 @@ class HikingActivityPostgresTests {
         String body = evidence(body(key).replace("\"completed\":true", "\"completed\":false"), "[[" + summitPoint(50) + "]]");
         String first = send(owner, body).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true))
             .andExpect(jsonPath("$.gpsValidationVersion").value(1)).andReturn().getResponse().getContentAsString();
-        assertEquals(first, saved(owner, body)); // Expected false is retained in the fingerprint.
+        assertEquals(first, saved(owner, body)); // 클라이언트가 제출한 false도 요청 지문에 보존된다.
         jdbc.update("update hiking_activities set completed=false where member_id=?", memberId);
         send(owner, body).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(false));
         assertEquals(64, jdbc.queryForObject("select length(request_fingerprint) from hiking_activities where member_id=?", Integer.class, memberId));
@@ -227,7 +226,7 @@ class HikingActivityPostgresTests {
             .andExpect(status().isConflict()).andExpect(jsonPath("$.error").value("client_request_conflict"));
         send(owner, body.replace("\"completed\":true", "\"completed\":false")).andExpect(status().isConflict());
         send(owner, body.replace("\"gpsSegments\":[[", "\"gpsSegments\":[[],[" )).andExpect(status().isConflict());
-        // Equivalent Instant and numeric JSON spellings are canonicalized.
+        // 같은 시각과 수치의 서로 다른 JSON 표기는 정규화된다.
         assertEquals(saved(owner, body), saved(owner, body.replace("01:30:00Z", "01:30:00.000000000Z").replace("1.0,", "1,")));
     }
 
@@ -328,7 +327,7 @@ class HikingActivityPostgresTests {
     @Test void differentValidTimesStillConflict() throws Exception {
         String key = UUID.randomUUID().toString(), body = body(key);
         saved(owner, body);
-        // Both time-shifted and one-microsecond-different bodies remain valid.
+        // 시각을 옮기거나 1마이크로초 바꾼 요청 모두 입력 검증에는 유효하다.
         send(owner, body.replace("01:00:00Z", "01:00:00.000001Z").replace("02:00:00Z", "02:00:00.000001Z"))
             .andExpect(status().isConflict());
         send(owner, body.replace("02:00:00Z", "02:00:01Z")).andExpect(status().isConflict());
@@ -356,7 +355,7 @@ class HikingActivityPostgresTests {
                 }
                 for (int i = 0; i < 8; i++) {
                     Client client = session(providerId);
-                    // Each worker has its own session and transaction, with mixed UUID case.
+                    // 작업자마다 별도 세션·트랜잭션을 사용하며 UUID 대소문자를 섞는다.
                     String content = i % 2 == 0 ? body : body.replace(key, key.toUpperCase(Locale.ROOT));
                     futures.add(pool.submit(() -> { gate.await(); return saved(client, content); }));
                 }
@@ -431,7 +430,7 @@ class HikingActivityPostgresTests {
 
     @Test void postgresUniqueFailureRollsBackBeforeHttpConflictAndNextRequestWorks() throws Exception {
         saved(owner, body(UUID.randomUUID().toString()));
-        // Simulate a stale/missed application precheck; PostgreSQL remains the final guard.
+        // 사전 조회가 중복을 놓친 상황을 만들어 PostgreSQL 고유 제약의 충돌 처리를 검증한다.
         doReturn(false).when(activities).existsByMemberIdAndMountainIdAndStartedAtAndEndedAt(
             memberId, 1L, Instant.parse("2020-01-01T01:00:00Z"), Instant.parse("2020-01-01T02:00:00Z"));
         send(owner, body(UUID.randomUUID().toString())).andExpect(status().isConflict())
@@ -489,28 +488,25 @@ class HikingActivityPostgresTests {
         String key = UUID.randomUUID().toString(), body = body(key);
         send(owner, body.replace("3600000", "3600001")).andExpect(status().isBadRequest());
         send(owner, body.replace("02:00:00Z", "00:59:59.999999999Z")).andExpect(status().isBadRequest());
-        // These reversed instants would round to the same microsecond; raw input must still fail.
+        // 마이크로초 반올림 후 같아지더라도 원본의 역전된 시각은 거부해야 한다.
         send(owner, body.replace("01:00:00Z", "01:00:00.000000002Z")
             .replace("02:00:00Z", "01:00:00.000000001Z").replace("3600000", "0"))
             .andExpect(status().isBadRequest());
         send(owner, body.replace("2020-01-01", "2999-01-01")).andExpect(status().isBadRequest());
         send(owner, body.replace("2000,", "-1,")).andExpect(status().isBadRequest());
         assertEquals(0, count(key));
-        // One millisecond of valid elapsed time remains valid at a rounding boundary.
+        // 반올림 경계에서도 유효한 1밀리초 경과 시간을 허용해야 한다.
         String shortBody = body.replace("01:00:00Z", "01:00:00.000000500Z")
             .replace("02:00:00Z", "01:00:00.001000500Z").replace("3600000", "1");
         assertEquals(saved(owner, shortBody), saved(owner, shortBody));
     }
 
-    // All following tests are covered by the existing opt-in class condition and
-    // pre-Flyway URL guard. They must never run against an application database.
     long jsonId(String json) {
         return ((Number) org.springframework.boot.json.JsonParserFactory.getJsonParser().parseMap(json).get("id")).longValue();
     }
 
     String scoredBody(String key) {
-        // A real 600m two-point route ending at the seeded summit, rather than a
-        // fabricated distance or a change to the existing scoring policy.
+        // 두 합성 좌표의 계산 거리를 600m로 맞추고 시드 정상에서 끝나도록 한다.
         return jdbc.queryForObject("select lat,lng from mountains where id=1", (rs, i) -> {
             double lat = rs.getDouble(1), lng = rs.getDouble(2);
             String first = point(lat - Math.toDegrees(600.0 / 6_371_000), lng, 10, "2020-01-01T01:00:00Z");
@@ -689,7 +685,7 @@ class HikingActivityPostgresTests {
         assertDatabaseViolation("23503", () -> jdbc.update("insert into " + schema + ".hiking_records(member_id,mountain_name,title,content,hiking_date,is_public,hiking_activity_id) values(?,'Probe','Probe','','2020-01-01',false,-1)", member));
         assertDatabaseViolation("23514", () -> jdbc.update("insert into " + schema + ".member_monthly_goals(member_id,goal_month,target_distance_km,target_hiking_count) values(?,'2020-01-01',null,null)", member));
         assertEquals(1L, jdbc.queryForObject("select count(*) from " + schema + ".hiking_activities", Long.class));
-        // A second migrate must be a no-op; existing schema/data is never reset.
+        // 재실행 시 추가로 적용되는 마이그레이션이 없어야 한다.
         assertEquals(0, flyway.migrate().migrationsExecuted);
     }
 

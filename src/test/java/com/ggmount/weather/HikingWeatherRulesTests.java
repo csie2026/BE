@@ -8,6 +8,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+// 직접 만든 예보값으로 등급·문구와 예보 변환을 검증하며 외부 HTTP 호출이나 산행 인증·안전 보장은 검증하지 않는다.
 class HikingWeatherRulesTests {
     static final LocalDateTime DAY = LocalDateTime.of(2026, 10, 2, 9, 0);
 
@@ -27,6 +28,8 @@ class HikingWeatherRulesTests {
     }
 
     @Test
+    // 기상 요소별 CAUTION·BAD 경계값을 검사한다.
+    // 모든 기준의 직전·직후 값을 포괄하지는 않는다.
     void thresholds() {
         assertEquals(
             Level.CAUTION,
@@ -140,6 +143,7 @@ class HikingWeatherRulesTests {
     }
 
     @Test
+    // 더 나쁜 등급의 대표 문구가 우선하고 나머지 조건은 notes로 남는지 확인한다.
     void worstFindingIsTheMessageAndTheRestAreNotes() {
         var v = HikingWeatherRules.judge(List.of(
             hour(9, 18, 0, 40, 0, 0, 11),
@@ -148,10 +152,10 @@ class HikingWeatherRulesTests {
         assertEquals(Level.BAD, v.level());
         assertTrue(v.message().contains("바람"), v.message());
         assertEquals(2, v.notes().size());
-        // 강수확률 40%, 31℃
     }
 
     @Test
+    // 수치 문자열 해석과 발표분 선택의 날짜·10분 경계를 검사한다.
     void parsesKmaAmountsAndBaseTimes() {
         assertEquals(0, KmaForecastClient.amount("강수없음"));
         assertEquals(0, KmaForecastClient.amount("적설없음"));
@@ -228,6 +232,7 @@ class HikingWeatherRulesTests {
     }
 
     @Test
+    // 항목 병합과 산행 시간대 선택을 검사하며 누락 기상값의 등급 영향은 단언하지 않는다.
     void groupsKmaItemsByHourAndKeepsOnlyHikingHours() {
         var items = List.of(
             new KmaForecastClient.KmaResponse.Item("TMP", "20261002", "0500", "9"),

@@ -38,9 +38,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** Real Spring/validation/service/database integration, including transaction rollback and
- * concurrent writers. Runs only against an explicitly isolated H2 DB. Does not prove physical GPS
- * presence or PostgreSQL production concurrency. Full suite requires the project's Java21 setup.
+/** 격리된 H2에서 실제 보안 필터·서비스·DB의 롤백과 동시 쓰기를 검증한다.
+ * 합성 GPS 입력을 사용하므로 실제 이동이나 PostgreSQL의 동시성 동작을 증명하지 않는다.
  */
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:scoring_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
@@ -79,7 +78,7 @@ class HikingScoringIntegrationTests {
         mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(filters).build();
         courseId = jdbc.queryForObject("select min(id) from courses", Long.class);
         mountainId = jdbc.queryForObject("select mountain_id from courses where id=?", Long.class, courseId);
-        // Isolated fixture summits: server completion tests use actual DB coordinates.
+        // 정상 판정이 DB 좌표와 대조되도록 격리된 테스트 DB의 정상 위치를 고정한다.
         jdbc.update("update mountains set lat=37.65,lng=126.97 where id=? or id=?", mountainId, otherMountain());
         identity = "scoring-" + UUID.randomUUID();
         ownerId = member(identity);
@@ -195,7 +194,7 @@ class HikingScoringIntegrationTests {
                 new com.ggmount.hiking.dto.GpsPointRequest(37.65+Math.toDegrees(1234.5/6_371_000),126.97,Instant.parse("2020-01-01T01:10:00Z"),50.0))));
         jdbc.update("update hiking_activities set gps_validation_version=1,distance_meters=9999,request_fingerprint=? where id=?",
             com.ggmount.hiking.service.HikingRequestFingerprint.of(old),activityId(key));
-        entityManager.clear(); // Reload the deliberately seeded pre-upgrade row, not the JPA cache.
+        entityManager.clear(); // 직접 심은 구버전 행을 JPA 캐시 대신 DB에서 다시 읽는다.
         String inflated = b.replace("1234.5","9999");
         save(owner,inflated).andExpect(status().isOk()).andExpect(jsonPath("$.id").value(activityId(key)));
         save(owner,b).andExpect(status().isConflict());
@@ -265,7 +264,7 @@ class HikingScoringIntegrationTests {
     @Test void separatePublicBonusPolicyDoesNotMultiplyByDailyActivitiesAndExcludesUnlinkedLegacyJournals() throws Exception {
         String one=UUID.randomUUID().toString(),two=UUID.randomUUID().toString();
         save(owner,body(one)).andExpect(status().isOk());save(owner,mountain(body(two),otherMountain())).andExpect(status().isOk());
-        journal(two,true);assertEquals(320,score()); // publication is a separate per-mountain policy
+        journal(two,true);assertEquals(320,score()); // 공개 보너스는 일일 인증과 별개로 산별 적용된다.
         jdbc.update("insert into hiking_records(member_id,mountain_name,title,content,hiking_date,is_public) values(?,?,?,?,?,true)",ownerId,"legacy","legacy","body",java.sql.Date.valueOf("2019-01-01"));
         rebuild();assertEquals(320,score());
     }
@@ -289,10 +288,8 @@ class HikingScoringIntegrationTests {
     }
     @Test void concurrentActivitiesAndJournalChangesAreSerializedPerMember() throws Exception {
         TestTransaction.flagForCommit();TestTransaction.end();
-        // Establish the shared session's token before concurrent first access. Otherwise
-        // two deferred CSRF token generators can overwrite each other and return 403
-        // before either request reaches the activity/member-lock code under test.
-        // All subsequent writes still use the real security filter and CSRF token.
+        // 공유 세션의 지연 생성 CSRF 토큰이 서로 덮어써 잠금 검증 전에 차단되지 않도록 미리 발급한다.
+        // 이후 쓰기 요청도 실제 보안 필터와 CSRF 검증을 거친다.
         mvc.perform(get("/api/csrf").session(owner))
             .andExpect(status().isOk()).andExpect(jsonPath("$.token").isNotEmpty());
         var pool=Executors.newFixedThreadPool(2);

@@ -9,7 +9,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 
-/** Bounded, request-scoped buffering, including requests with unknown/chunked length. */
+/** 길이가 없거나 청크로 전송된 요청도 실제 읽은 크기를 제한한 뒤 요청 범위에서 재사용한다. */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 20)
 public class HikingActivityBodyLimitFilter extends OncePerRequestFilter {
@@ -17,7 +17,7 @@ public class HikingActivityBodyLimitFilter extends OncePerRequestFilter {
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        // Servlet paths are decoded by the container, unlike getRequestURI().
+        // getRequestURI()와 달리 서블릿 경로는 컨테이너에서 디코딩된 값이다.
         String path = request.getServletPath();
         if (path == null || path.isEmpty())
             path = org.springframework.web.util.UriUtils.decode(

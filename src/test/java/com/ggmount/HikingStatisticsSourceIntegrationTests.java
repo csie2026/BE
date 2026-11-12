@@ -19,7 +19,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-/** Verifies the existing owned-activity endpoint used as the FE statistics source. */
+/** 통계 원천인 본인 산행 목록을 검증하며, 활동은 저장 검증을 거치지 않고 SQL로 준비한다. */
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:statistics_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",

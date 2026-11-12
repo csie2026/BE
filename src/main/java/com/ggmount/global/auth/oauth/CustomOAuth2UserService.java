@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.stereotype.Service;
 
+/** 공급자 사용자 정보 조회와 내부 회원 처리를 연결하고, 내부 회원 ID를 포함한 인증 주체를 구성한다. */
 @Service
 public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
@@ -18,8 +19,11 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         this.memberService = memberService;
     }
 
+    /**
+     * 공급자 조회·매핑·회원 저장 후 내부 회원 ID를 포함한 인증 주체를 구성한다.
+     * @throws OAuth2AuthenticationException 공급자 조회 또는 필수 식별자 검증 실패
+     */
     @Override
-    // 공급자 사용자 정보를 공통 형식으로 변환해 내부 회원을 생성·갱신한 뒤 세션에서 사용할 principal을 만든다.
     public OAuth2User loadUser(OAuth2UserRequest request) throws OAuth2AuthenticationException {
         OAuth2User user = super.loadUser(request);
         String provider = request.getClientRegistration().getRegistrationId();

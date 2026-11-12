@@ -22,6 +22,8 @@ public class PersonalDataController {
         this.service = service;
     }
 
+    // 본인의 프로필·배경 이미지를 조회하며, v가 전달되면 현재 이미지 버전과 일치해야 한다.
+    // 지원하지 않는 종류이거나 일치하는 이미지가 없으면 서비스에서 404로 거부한다.
     @GetMapping("/{kind}")
     public ResponseEntity<byte[]> image(
         @AuthenticationPrincipal OAuthPrincipal principal,
@@ -34,6 +36,7 @@ public class PersonalDataController {
             .header("X-Content-Type-Options", "nosniff").body(image.content());
     }
 
+    // multipart의 file을 검증·저장하고 새 이미지 버전 URL을 포함한 본인 회원 응답을 캐시 저장 금지로 반환한다.
     @PutMapping(value = "/{kind}", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<MemberResponse> saveImage(
         @AuthenticationPrincipal OAuthPrincipal principal,

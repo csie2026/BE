@@ -5,11 +5,16 @@ import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
 import org.springframework.stereotype.Component;
 
+/** 공급자별 사용자 응답을 공통 정보로 변환하고 계정 식별에 필요한 사용자 ID를 검증한다. */
 @Component
 public class OAuthUserInfoMapper {
 
-    // Google의 평면 응답과 Kakao의 중첩 응답을 공통 회원 정보로 맞춘다.
-    // 동의하지 않은 선택 정보는 없을 수 있지만 공급자의 사용자 ID는 계정 식별을 위해 필수다.
+    /**
+     * Google의 sub 또는 Kakao의 id를 공급자 사용자 ID로 사용한다.
+     * 선택 정보는 문자열인 경우에만 반영하며, 누락되거나 형식이 다르면 null로 처리한다.
+     *
+     * @throws OAuth2AuthenticationException 지원하지 않는 공급자이거나 필수 사용자 ID가 유효하지 않은 경우
+     */
     public OAuthUserInfo map(String provider, Map<String, Object> attributes) {
         return switch (provider) {
             case "google" -> new OAuthUserInfo(
@@ -35,6 +40,7 @@ public class OAuthUserInfoMapper {
         ;
     }
 
+    /** 숫자형 ID도 문자열로 통일하되, 식별할 수 없는 계정으로 로그인을 이어가지 않도록 누락·공백을 거부한다. */
     private String requiredId(Object value) {
         String id = value instanceof Number ? value.toString() : string(value);
         if (id == null || id.isBlank()) {
@@ -47,6 +53,7 @@ public class OAuthUserInfoMapper {
         return value instanceof String text ? text : null;
     }
 
+    // 선택 정보의 중첩 객체가 없거나 객체 형식이 아니면 빈 맵으로 처리해 하위 정보도 누락된 값으로 변환한다.
     private Map<?, ?> nested(Object value) {
         return value instanceof Map<?, ?> map ? map : Map.of();
     }
