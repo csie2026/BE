@@ -74,7 +74,7 @@ src/test/                  # 인증·권한·이미지·활동·일지·migratio
 
 산 검색·시군 필터는 전체 목록을 받은 FE에서 처리합니다. 별도 산 상세나 점수 계산 API는 없습니다. 점수는 기존 본인 정보·공개 프로필·랭킹 응답에 포함됩니다.
 
-상세 요청·응답과 권한 정책은 DOCS Repository의 [ToPeak_API명세서.md](https://github.com/csie2026/DOCS/blob/main/ToPeak_API명세서.md)에서 관리합니다.
+상세 요청·응답과 권한 정책은 DOCS Repository의 [ToPeak API 명세서.md](https://github.com/csie2026/DOCS/blob/main/ToPeak%20API%20%EB%AA%85%EC%84%B8%EC%84%9C.md)에서 관리합니다.
 
 ## 데이터베이스
 
