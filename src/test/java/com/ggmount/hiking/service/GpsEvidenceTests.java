@@ -9,6 +9,17 @@ import static org.junit.jupiter.api.Assertions.*;
 
 // 합성 좌표로 경로 거리·오차·증거 조건을 검사하며 실제 이동이나 기기 위치의 진위를 입증하지 않는다.
 class GpsEvidenceTests {
+    @Test void summitProofRequiresRawDistanceThirtyAndAccuracyFiftyInclusive() {
+        for (double meters : new double[]{29.999,30,30.001}) {
+            for (double accuracy : new double[]{50,50.0001}) {
+                var point = new GpsPointRequest(Math.toDegrees(meters / 6_371_000),0.0,START.plusSeconds(1),accuracy);
+                var r = request(0,List.of(List.of(point)));
+                GpsEvidence.validate(r);
+                assertEquals(meters <= 30 && accuracy <= 50,GpsEvidence.reachedSummit(r,0,0));
+            }
+        }
+        assertFalse(GpsEvidence.reachedSummit(request(0,List.of()),0,0));
+    }
     static final Instant START = Instant.parse("2020-01-01T00:00:00Z");
     static GpsPointRequest point(double lat, double lng, int seconds) {
         return new GpsPointRequest(lat, lng, START.plusSeconds(seconds), 5.0);

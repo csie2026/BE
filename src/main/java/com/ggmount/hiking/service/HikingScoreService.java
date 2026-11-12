@@ -12,7 +12,7 @@ import java.sql.Date;
 import java.util.*;
 
 /**
- * 방문·정상 점수 계산은 정책 클래스에 위임하고, 활동별 결과·일일 인증·공개 일지 보너스·회원 총점과 변경 이력을 저장한다.
+ * 방문·정상 점수 계산은 정책 클래스에 위임하고, 활동별 결과·공개 일지 보너스·회원 총점과 변경 이력을 저장한다.
  * 호출자의 기존 트랜잭션에 참여해야 하며, 활동·일지 변경 전 회원 잠금을 얻는 순서로 호출한다.
  * 산행 신규 저장·동일 재전송, 일지 생성·수정·삭제 및 명시적 재산정에서 현재 자료로 점수를 다시 계산한다.
  */
@@ -32,29 +32,45 @@ public class HikingScoreService {
         // 오래된 값과의 비교 때문에 점수 회수가 변경 없음으로 오인되지 않도록 한다.
         entityManager.refresh(member);
     }
-    private record Previous(String status, int visit, int summit) {
+    private record Previous(String status, int visit, int summit, String version, java.time.LocalDate date) {
         long points() { return visit + summit; }
     }
     // 호출자가 회원 잠금을 획득한 상태에서 실행하며, 이 메서드 자체에서 잠금을 다시 얻지는 않는다.
     public ScoreSummaryResponse rebuildLocked(Member member) {
+        return rebuildLocked(member, null);
+    }
+    public ScoreSummaryResponse rebuildLocked(Member member, Long newActivityId) {
         long memberId = member.getId();
         // 공개 상태 조회 전에 영속성 컨텍스트에 남은 일지 수정·삭제를 DB에 반영한다.
         activities.flush();
-        List<HikingScorePolicy.Activity> input = activities.findByMemberIdOrderByStartedAtDescIdDesc(memberId)
-            .stream().map(a -> new HikingScorePolicy.Activity(a.getId(), a.getMountainId(), a.getStartedAt(),
-                a.getDistanceMeters(), a.getElapsedMs(), a.isCompleted(), a.isGpsRecorded())).toList();
-        // 회원별 전체 활동을 정책에 전달해 첫 방문·일일 인증과 활동별 점수를 다시 판정한다.
-        // 미인증 활동도 결과 행을 저장하지만 방문·정상 점수는 0이다.
-        List<HikingScorePolicy.Award> awards = HikingScorePolicy.calculate(input);
         Map<Long, Previous> previous = new HashMap<>();
-        jdbc.query("select activity_id,status,visit_points,summit_points from hiking_activity_scores where member_id=?",
+        jdbc.query("select activity_id,status,visit_points,summit_points,policy_version,certification_date from hiking_activity_scores where member_id=?",
             (org.springframework.jdbc.core.RowCallbackHandler) rs -> previous.put(rs.getLong(1),
-                new Previous(rs.getString(2), rs.getInt(3), rs.getInt(4))), memberId);
-        // 기존 일일 인증을 비운 뒤 현재 계산에서 인증된 활동으로 다시 구성한다.
-        jdbc.update("delete from hiking_daily_certifications where member_id=?", memberId);
+                new Previous(rs.getString(2), rs.getInt(3), rs.getInt(4), rs.getString(5), rs.getDate(6).toLocalDate())), memberId);
+        var input = new ArrayList<HikingScorePolicy.Activity>();
+        var awards = new ArrayList<HikingScorePolicy.Award>();
+        var historicalVisited = new HashSet<Long>();
+        for (var a : activities.findByMemberIdOrderByStartedAtDescIdDesc(memberId)) {
+            var old = previous.get(a.getId());
+            if (old != null && !HikingScorePolicy.VERSION.equals(old.version())) {
+                // 구정책 결과를 소급 변경하지 않는다. 승인 없는 과거 재인증·일일 원장 삭제도 하지 않는다.
+                awards.add(new HikingScorePolicy.Award(a.getId(), a.getMountainId(), old.date(), old.status(), old.visit(), old.summit()));
+                if ("CERTIFIED".equals(old.status())) historicalVisited.add(a.getMountainId());
+            } else if (old != null || Objects.equals(a.getId(), newActivityId)) {
+                boolean verifiedSummit = a.isCompleted() && Objects.equals(a.getGpsValidationVersion(), GpsEvidence.VALIDATION_VERSION);
+                input.add(new HikingScorePolicy.Activity(a.getId(), a.getMountainId(), a.getStartedAt(),
+                    a.getDistanceMeters(), a.getElapsedMs(), a.isCompleted(), a.isGpsRecorded(), verifiedSummit));
+            }
+        }
+        awards.addAll(HikingScorePolicy.calculate(input, historicalVisited));
         long visitTotal = 0, summitTotal = 0;
         for (var award : awards) {
             Previous old = previous.get(award.activityId());
+            if (old != null && !HikingScorePolicy.VERSION.equals(old.version())) {
+                visitTotal = Math.addExact(visitTotal, old.visit());
+                summitTotal = Math.addExact(summitTotal, old.summit());
+                continue;
+            }
             if (old == null) {
                 jdbc.update("insert into hiking_activity_scores(activity_id,member_id,mountain_id,certification_date,status,visit_points,summit_points,policy_version) values(?,?,?,?,?,?,?,?)",
                     award.activityId(), memberId, award.mountainId(), Date.valueOf(award.certificationDate()),
@@ -71,8 +87,6 @@ public class HikingScoreService {
                         + ";visit=" + (old == null ? 0 : old.visit()) + "->" + award.visitPoints()
                         + ";summit=" + (old == null ? 0 : old.summit()) + "->" + award.summitPoints());
             }
-            if (award.certified()) jdbc.update("insert into hiking_daily_certifications(member_id,certification_date,activity_id) values(?,?,?)",
-                memberId, Date.valueOf(award.certificationDate()), award.activityId());
             visitTotal = Math.addExact(visitTotal, award.visitPoints());
             summitTotal = Math.addExact(summitTotal, award.summitPoints());
         }

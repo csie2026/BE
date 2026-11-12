@@ -12,43 +12,45 @@ import java.util.*;
  */
 public final class HikingScorePolicy {
     // 계산 결과 저장과 응답에서 사용하는 정책 버전이며, 이 클래스에서 과거 버전으로 분기하지는 않는다.
-    public static final String VERSION = "visit-500m-20m-daily1-v1";
+    public static final String VERSION = "visit-general-or-verified-summit-multi-v2";
     public static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
-    // 인증에는 거리 500m 이상과 경과 시간 20분 이상이 모두 필요하다. 더 길거나 오래 걸려도 추가 점수는 없다.
+    // 일반 인증은 거리 500m와 시간 20분이 모두 필요하다. 서버 검증 정상 도달은 별도 예외다.
     public static final double MIN_DISTANCE_METERS = 500;
     public static final long MIN_ELAPSED_MS = 20 * 60 * 1000L;
     private HikingScorePolicy() {}
     // 회원별로 분리한 입력을 받는다. GPS 증거·정상 도달 여부의 판정은 호출 전에 수행하며 여기서 좌표를 검증하지 않는다.
     public record Activity(long id, long mountainId, Instant startedAt, double distanceMeters,
-                           long elapsedMs, boolean completed, boolean gpsRecorded) {}
+                           long elapsedMs, boolean completed, boolean gpsRecorded, boolean summitVerified) {}
     // 활동별 상태와 방문·정상 점수를 반환한다. 고정 정수 점수의 합이므로 반올림·절삭·실수의 정수 변환은 없다.
     public record Award(long activityId, long mountainId, LocalDate certificationDate,
                         String status, int visitPoints, int summitPoints) {
         public int points() { return visitPoints + summitPoints; }
         public boolean certified() { return "CERTIFIED".equals(status); }
     }
-    // 전체 입력을 시작 시각·활동 ID 오름차순으로 계산하므로, 더 이른 활동이 추가되면 일일 인증과 첫 방문 결과가 바뀔 수 있다.
+    // 신규 정책 입력을 시작 시각·활동 ID 순서로 계산하며 과거 정책의 방문 이력은 보존한다.
     public static List<Award> calculate(List<Activity> activities) {
+        return calculate(activities, Set.of());
+    }
+    public static List<Award> calculate(List<Activity> activities, Set<Long> historicalVisited) {
         var sorted = activities.stream().sorted(Comparator.comparing(Activity::startedAt)
             .thenComparingLong(Activity::id)).toList();
-        Set<LocalDate> dates = new HashSet<>();
-        Set<Long> visited = new HashSet<>();
+        Set<Long> visited = new HashSet<>(historicalVisited);
         List<Award> awards = new ArrayList<>();
         for (var a : sorted) {
-            // 시작 시각의 서울 날짜를 사용한다. 산과 무관하게 하루에 조건을 충족한 첫 활동 하나만 인증한다.
+            // 날짜는 표시용으로 유지하며 일일 제한에는 사용하지 않는다.
             LocalDate date = a.startedAt().atZone(ZONE).toLocalDate();
-            // GPS 증거 없음→거리·시간 미달→일일 한도 순으로 제외하며, 제외된 활동의 두 점수는 모두 0이다.
-            String status = !a.gpsRecorded() ? "GPS_REQUIRED"
-                : !Double.isFinite(a.distanceMeters()) || a.distanceMeters() < MIN_DISTANCE_METERS
-                  || a.elapsedMs() < MIN_ELAPSED_MS ? "BELOW_MINIMUM"
-                : dates.contains(date) ? "DAILY_LIMIT" : "CERTIFIED";
+            // completed만으로 예외를 허용하지 않는다. 호출자는 서버 GPS 검증 이력도 확인해야 한다.
+            boolean verifiedSummit = a.completed() && a.summitVerified();
+            boolean general = a.gpsRecorded() && Double.isFinite(a.distanceMeters())
+                && a.distanceMeters() >= MIN_DISTANCE_METERS && a.elapsedMs() >= MIN_ELAPSED_MS;
+            String status = !a.gpsRecorded() && !verifiedSummit ? "GPS_REQUIRED"
+                : general || verifiedSummit ? "CERTIFIED" : "BELOW_MINIMUM";
             int visit = 0, summit = 0;
             if ("CERTIFIED".equals(status)) {
-                dates.add(date);
                 // 인증된 방문만 첫 방문 이력에 포함한다. 서로 다른 산의 첫 방문은 200점, 같은 산의 이후 방문은 100점이다.
                 visit = visited.add(a.mountainId()) ? 200 : 100;
                 // 정상 도달은 인증의 필수 조건이 아니며, 인증된 활동에서만 70점을 추가한다. 활동별 최대는 270점이다.
-                summit = a.completed() ? 70 : 0;
+                summit = a.completed() && a.summitVerified() ? 70 : 0;
             }
             awards.add(new Award(a.id(), a.mountainId(), date, status, visit, summit));
         }
