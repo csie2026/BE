@@ -3,6 +3,7 @@ package com.ggmount;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.ConfigDataApplicationContextInitializer;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import java.net.URI;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,11 +29,16 @@ class MobileProfileConfigurationTests {
         runner.withPropertyValues("spring.profiles.active=local,mobile").run(context -> {
             assertNull(context.getStartupFailure());
             var env = context.getEnvironment();
-            String origin = env.getProperty("app.frontend-url");
-            assertNotNull(origin);
-            var address = java.net.URI.create(origin);
-            assertEquals("https", address.getScheme());
-            assertNotNull(address.getHost());
+            // 임시 터널 호스트가 바뀌어도 공개 HTTPS origin과 콜백의 일관성을 검증한다.
+            String origin = env.getRequiredProperty("app.frontend-url");
+            URI uri = URI.create(origin);
+            assertEquals("https", uri.getScheme());
+            assertNotNull(uri.getHost());
+            assertFalse(uri.getHost().isBlank());
+            assertEquals("", uri.getRawPath());
+            assertNull(uri.getRawUserInfo());
+            assertNull(uri.getRawQuery());
+            assertNull(uri.getRawFragment());
             for (String provider : new String[] {"google", "kakao"}) {
                 assertEquals(origin + "/login/oauth2/code/" + provider, env.getProperty(
                     "spring.security.oauth2.client.registration." + provider + ".redirect-uri"));
@@ -43,5 +49,17 @@ class MobileProfileConfigurationTests {
             assertEquals("optional:file:./.env[.properties]", env.getProperty("spring.config.import"));
             assertEquals("none", env.getProperty("spring.jpa.hibernate.ddl-auto"));
         });
+    }
+
+    @Test void mobileCallbacksFollowAnOverriddenPublicOrigin() {
+        String origin = "https://mobile-profile.example.invalid";
+        runner.withPropertyValues("spring.profiles.active=local,mobile", "app.frontend-url=" + origin)
+            .run(context -> {
+                assertNull(context.getStartupFailure());
+                for (String provider : new String[] {"google", "kakao"}) {
+                    assertEquals(origin + "/login/oauth2/code/" + provider, context.getEnvironment().getProperty(
+                        "spring.security.oauth2.client.registration." + provider + ".redirect-uri"));
+                }
+            });
     }
 }

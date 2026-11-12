@@ -105,7 +105,7 @@ public class HikingActivityService {
         // 제출 경로로 정상 도달 여부와 지문을 저장하고 점수를 재산정한다. GPS 자료가 실제 이동을 증명하지는 않는다.
         var activity = activities.saveAndFlush(new HikingActivity(member, mountain.name(), r,
             GpsEvidence.reachedSummit(r, mountain.lat(), mountain.lng()), HikingRequestFingerprint.of(r)));
-        scores.rebuildLocked(member);
+        scores.rebuildLocked(member, activity.getId());
         return response(activity);
     }
     private record Summit(String name, double lat, double lng) {}

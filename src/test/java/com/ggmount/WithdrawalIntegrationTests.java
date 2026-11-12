@@ -96,6 +96,9 @@ class WithdrawalIntegrationTests {
             .andExpect(jsonPath("$.scoring.visitPoints").value(200))
             .andExpect(jsonPath("$.scoring.summitPoints").value(70));
         long activity = jdbc.queryForObject("select id from hiking_activities where member_id=?", Long.class, client.id());
+        // 신규 정책은 일일 원장을 만들지 않는다. 과거 원장 삭제·타 회원 보존 검증용으로 명시적으로 준비한다.
+        jdbc.update("insert into hiking_daily_certifications(member_id,certification_date,activity_id) values(?,?,?)",
+            client.id(), java.sql.Date.valueOf("2020-01-01"), activity);
         mvc.perform(post("/api/journals").session(client.session()).header("X-CSRF-TOKEN", client.csrf())
             .contentType("application/json").content("{\"hikingRecordId\":" + activity + ",\"title\":\"Delete me\",\"content\":\"Private text\",\"isPublic\":true}"))
             .andExpect(status().isOk());
