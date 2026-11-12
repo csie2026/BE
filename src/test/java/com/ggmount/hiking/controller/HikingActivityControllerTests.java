@@ -11,6 +11,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+// 서비스 Mock이 던진 구조화된 DB 예외의 변환만 검사한다. 실제 제약 위반·트랜잭션 롤백·HTTP 보안 필터는 실행하지 않는다.
 class HikingActivityControllerTests {
     private static final String SESSION = "hiking_activity_session_unique";
 
@@ -63,6 +64,7 @@ class HikingActivityControllerTests {
     }
 
     @Test void knownOtherHibernateNameDoesNotUseFallback() {
+        // Hibernate 제약 이름이 있으면 하위 PostgreSQL 정보가 알려진 세션 제약이어도 보완 판별을 적용하지 않는 경계다.
         var failure = new DataIntegrityViolationException("test", new ConstraintViolationException("test",
             postgres("23505", SESSION), SESSION + "_other"));
         assertSame(failure, assertThrows(DataIntegrityViolationException.class,

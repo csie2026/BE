@@ -12,6 +12,7 @@ import org.hibernate.exception.ConstraintViolationException;
 import org.postgresql.util.PSQLException;
 import com.ggmount.hiking.service.HikingActivityConflict;
 
+// 인증 회원의 산행 목록·상세 조회, 저장과 점수 재산정을 제공한다. 성공 응답은 기본 200이다.
 @RestController
 @RequestMapping("/api/users/me/hiking-records")
 public class HikingActivityController {
@@ -29,13 +30,15 @@ public class HikingActivityController {
     public ScoreSummaryResponse recalculate(@AuthenticationPrincipal OAuthPrincipal p) {
         return service.recalculate(p);
     }
+    // DTO 검증 실패는 공통 처리기에서 400, 산행 저장 충돌은 전용 오류 코드가 포함된 409로 응답한다.
     @PostMapping
     public HikingActivityResponse create(@AuthenticationPrincipal OAuthPrincipal p,
         @Valid @RequestBody HikingActivityRequest r) {
         try {
             return service.create(p, r);
         } catch (DataIntegrityViolationException e) {
-            // The proxied service transaction has rolled back before translating the error.
+            // 서비스 프록시의 트랜잭션 롤백 후 제약 위반을 변환한다. 지정한 제약 외의 예외는 그대로 전파한다.
+            // 산행 세션 중복과 요청 ID 중복을 서로 다른 409 충돌로 구분한다.
             boolean hasHibernateConstraintName = false;
             for (Throwable cause = e; cause != null; cause = cause.getCause()) {
                 if (cause instanceof ConstraintViolationException constraint) {
@@ -47,6 +50,7 @@ public class HikingActivityController {
                         throw HikingActivityConflict.request();
                 }
             }
+            // Hibernate에서 제약 이름을 얻지 못한 경우에만 PostgreSQL의 23505 상태와 세션 제약 이름을 확인한다.
             if (!hasHibernateConstraintName) {
                 for (Throwable cause = e; cause != null; cause = cause.getCause()) {
                     if (cause instanceof PSQLException postgres

@@ -26,6 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+// PostgreSQL 호환 H2와 Flyway로 적재한 DB를 사용해 인증된 MockMvc 응답 계약을 검사한다. 데이터 파일을 직접 읽지는 않는다.
+// 실제 GPS 산행 검증이나 코스의 현장 정확성 검증은 수행하지 않는다.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:mountain_contract;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",
@@ -40,6 +42,7 @@ class MountainDataContractTests {
     MockMvc mvc;
     MockHttpSession session;
 
+    // 전용 회원이 없을 때만 추가하고 DB의 내부 회원 ID로 인증 세션을 구성한다. 시드 재적재·중복 방지 테스트는 아니다.
     @BeforeEach void setup() {
         mvc = MockMvcBuilders.webAppContextSetup(context).addFilters(filters).build();
         var info = new OAuthUserInfo("google", "data-contract", "contract@example.invalid", "검증", null);
@@ -58,6 +61,8 @@ class MountainDataContractTests {
             .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
     }
 
+    // DB와 API의 식별자·참조·난이도 및 목록·상세 일관성을 대조한다.
+    // 경로는 시작점만 대조하며 전체 경로·거리는 검사하지 않는다.
     @Test void catalogAndAllCourseResponsesKeepSeedIdsAndDifficulty() throws Exception {
         var parser = JsonParserFactory.getJsonParser();
         var mountains = parser.parseList(response("/api/mountains"));
@@ -90,6 +95,7 @@ class MountainDataContractTests {
         for (long id = 1; id <= 420; id++) assertTrue(courseIds.contains(id));
     }
 
+    // 코스 없는 산의 빈 목록, 없는 산·코스의 404와 인증 없는 산 목록 요청의 401을 구분한다.
     @Test void absentMountainAndEmptyCoursesRemainDistinct() throws Exception {
         long emptyId = jdbc.queryForObject("select min(id) from mountains where id not in (select mountain_id from courses)", Long.class);
         assertEquals(List.of(), JsonParserFactory.getJsonParser().parseList(response("/api/mountains/" + emptyId + "/courses")));

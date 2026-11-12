@@ -22,7 +22,7 @@ class MemberJoinedAtMigrationTests {
             try (var rows = sql.executeQuery("select joined_at from members where provider_id='new-date'")) {
                 assertTrue(rows.next()); assertNotNull(rows.getObject(1));
             }
-            // A later login/profile change must not turn an unknown legacy date into today's date.
+            // SQL로 프로필을 변경해도 알 수 없는 기존 가입일을 현재 날짜로 채우지 않아야 한다.
             sql.executeUpdate("update members set nickname='Changed name' where provider_id='legacy-date'");
             try (var rows = sql.executeQuery("select joined_at from members where provider_id='legacy-date'")) {
                 assertTrue(rows.next()); assertNull(rows.getObject(1));

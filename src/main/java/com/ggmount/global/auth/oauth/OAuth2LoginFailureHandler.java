@@ -15,18 +15,21 @@ public class OAuth2LoginFailureHandler implements AuthenticationFailureHandler {
         this.frontendUrl = frontendUrl;
     }
 
+    /**
+     * 기존 세션의 인증 오류와 저장된 요청을 정리하고, 상세 실패 사유 없이 FE에 실패 여부만 전달한다.
+     * 세션이 없으면 새로 만들지 않으며, 실패 응답에는 캐시 저장 금지 헤더를 설정한다.
+     */
     @Override
     public void onAuthenticationFailure(
         HttpServletRequest request,
         HttpServletResponse response,
         AuthenticationException exception
     ) throws IOException {
-        // 공급자 응답 및 예외 메시지는 클라이언트에 노출하지 않습니다.
         var session = request.getSession(false);
         if (session != null) session.removeAttribute(org.springframework.security.web.WebAttributes.AUTHENTICATION_EXCEPTION);
         new org.springframework.security.web.savedrequest.HttpSessionRequestCache().removeRequest(request, response);
         response.setHeader("Cache-Control", "no-store");
-        // Use only trusted server configuration, never a request-supplied return URL or provider message.
+        // 복귀 주소는 서버 설정만 사용하며 요청의 복귀 URL이나 공급자 메시지를 리다이렉트에 반영하지 않는다.
         response.sendRedirect(frontendUrl + "/?oauth=failed");
     }
 }

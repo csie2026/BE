@@ -30,8 +30,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-/** Exercises the real user-info loader, mapper and transactional member services.
- * Only the provider HTTP response is replaced; no outer test transaction hides commits.
+/** 사용자 정보 로더·매퍼·회원 서비스와 전용 H2의 실제 커밋을 검사한다.
+ * 공급자 HTTP 응답을 대체하고 충돌·실패 사례는 저장소 Spy로 유도한다. 전체를 감싸는 테스트 트랜잭션은 없다.
  */
 @ActiveProfiles("oauth-member-connection")
 @SpringBootTest(properties = {
@@ -58,7 +58,7 @@ class OAuthMemberCreationIntegrationTests {
         identity = Long.toString(UUID.randomUUID().getMostSignificantBits() & Long.MAX_VALUE);
         var rest = new RestTemplate();
         server = MockRestServiceServer.bindTo(rest).build();
-        // A dedicated instance leaves the application's shared OAuth service untouched.
+        // 테스트 전용 로더에만 모의 HTTP 처리를 연결해 애플리케이션의 공유 로더를 변경하지 않는다.
         loader = new CustomOAuth2UserService(mapper, oauthMembers);
         loader.setRestOperations(rest);
         read = new TransactionTemplate(transactions);
@@ -145,7 +145,7 @@ class OAuthMemberCreationIntegrationTests {
     void concurrentFirstLoginsRecoverOnlyAfterRollbackAndReturnTheSameCommittedMember(String provider) throws Exception {
         var gate = new java.util.concurrent.CyclicBarrier(2);
         var missing = new java.util.concurrent.atomic.AtomicInteger();
-        // Force both real transactions to observe the absent row. There is no row to lock yet.
+        // 저장소 Spy로 두 트랜잭션이 모두 미존재를 관찰하게 해 최초 생성 충돌을 유도한다. 이후 저장·재조회는 실제 DB를 사용한다.
         org.mockito.Mockito.doAnswer(invocation -> {
             var found = repository.findByProviderAndProviderId(provider,identity);
             if (found.isEmpty()) {

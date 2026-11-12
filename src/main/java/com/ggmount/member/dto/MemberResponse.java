@@ -4,6 +4,9 @@ import com.ggmount.member.domain.Member;
 import java.util.Map;
 import java.time.Instant;
 
+/**
+ * 이메일·출생연도를 포함하는 본인 응답이다. userId는 외부 OAuth 식별자와 구분되는 내부 회원 ID다.
+ */
 public record MemberResponse(
     Long userId,
     String nickname,

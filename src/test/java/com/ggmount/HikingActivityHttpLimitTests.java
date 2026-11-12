@@ -9,6 +9,8 @@ import java.net.URI;
 import java.net.http.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+// 임의 포트 로컬 서버에 길이 미지정 본문을 실제 전송해 일반·퍼센트 인코딩 경로의 제한을 확인한다.
+// 인증·CSRF 없는 요청이므로 용량 필터의 선행 차단을 검사하며 산행 저장까지 진행하지 않는다.
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class HikingActivityHttpLimitTests {
     @LocalServerPort int port;

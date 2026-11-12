@@ -3,7 +3,9 @@ package com.ggmount.hiking.service;
 import java.time.Instant;
 import java.util.*;
 
-/** Dependency-free executable checks of the exact production policy class. */
+/** 운영 점수 정책을 직접 호출하는 외부 라이브러리 없는 검증 코드로, JUnit 래퍼와 독립 실행이 같은 사례를 사용한다.
+ * 회원별 입력을 분리해 전달하며 DB·잠금·공개 일지 보너스는 검증 범위가 아니다.
+ */
 public final class HikingScorePolicyChecks {
     private static final Instant DAY = Instant.parse("2026-01-01T00:00:00Z");
     private static HikingScorePolicy.Activity a(long id, long mountain, long seconds, double meters, long ms, boolean completed, boolean gps) {
@@ -68,6 +70,7 @@ public final class HikingScorePolicyChecks {
         equal(0,result.get(0).points()); equal(200,result.get(1).points());
     }
     public static void randomizedRebuildOrderAndDailyUniqueness() {
+        // 고정 난수 시드로 이력을 구성하고 입력 순서를 섞어도 같은 결과인지 확인한다. 독립된 다른 점수식과 대조하지는 않는다.
         var random = new Random(20261105);
         for (int run=0;run<500;run++) {
             var input = new ArrayList<HikingScorePolicy.Activity>();

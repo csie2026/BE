@@ -229,7 +229,7 @@ void mountainSelectionReadsSeedCoursesAndReturnsCoordinatesAsArrays() throws Exc
         mvc.perform(get("/api/rankings").session(viewerSession))
             .andExpect(jsonPath("$.length()").value(2))
             .andExpect(jsonPath("$[0].userId").value(owner.getId()))
-            // The linked public journal grants the mountain bonus; the legacy GPS summary grants no visit points.
+            // 연결된 공개 일지는 산별 보너스를 받지만 구형 GPS 요약만으로는 방문 점수가 생기지 않는다.
             .andExpect(jsonPath("$[0].score").value(50));
         String id = privateResponse.split("\"id\":")[1].split(",")[0];
         String update = "{\"title\":\"Changed\",\"content\":\"text\",\"isPublic\":true}";

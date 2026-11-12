@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// 전용 H2와 실제 보안 필터를 사용한다. 일반 사례는 테스트 트랜잭션 안에서 실행하며 동시 저장·마이그레이션은 별도 경계를 사용한다.
 @SpringBootTest(properties={
  "spring.datasource.url=jdbc:h2:mem:goals_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
  "spring.datasource.username=sa","spring.datasource.password=","spring.datasource.driver-class-name=org.h2.Driver",
@@ -97,6 +98,7 @@ class MonthlyGoalIntegrationTests {
   assertEquals(777L,jdbc.queryForObject("select score from members where id=1001",Long.class));
  }
  @Test void concurrentFirstSavesProduceOneWholeMemberMonthRow()throws Exception{
+  // 회원 자료를 먼저 커밋해 작업 스레드에 보이게 하고 각 서비스 트랜잭션을 경쟁시킨다. 어느 요청이 마지막일지는 고정하지 않는다.
   TestTransaction.flagForCommit();TestTransaction.end();var pool=Executors.newFixedThreadPool(2);
   try{var gate=new CountDownLatch(1);
    var a=pool.submit(()->{gate.await();return service.save(principal(1001),"2026-11",new MonthlyGoalRequest(new BigDecimal("10"),4));});
@@ -107,6 +109,7 @@ class MonthlyGoalIntegrationTests {
   }finally{pool.shutdownNow();pool.awaitTermination(10,TimeUnit.SECONDS);jdbc.update("delete from member_monthly_goals where member_id in (1001,1002)");jdbc.update("delete from members where id in (1001,1002)");TestTransaction.start();}
  }
  @Test void migrationKeepsExistingGoalsAndAllowsOneTargetOnly()throws Exception{
+  // 매번 별도 H2에 V5까지 적재한 뒤 최신 마이그레이션을 적용해 기존 값 보존과 선택적 목표 제약을 검사한다.
   String url="jdbc:h2:mem:goal_upgrade_"+UUID.randomUUID()+";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
   Flyway.configure().dataSource(url,"sa","").target("5").load().migrate();
   try(var c=DriverManager.getConnection(url,"sa","");var q=c.createStatement()){

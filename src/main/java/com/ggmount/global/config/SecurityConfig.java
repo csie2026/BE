@@ -9,10 +9,17 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.csrf.CsrfException;
 
-// OAuth 진입·콜백과 CSRF 토큰 발급만 인증 없이 허용하고, 나머지 요청은 세션 인증을 요구한다.
+/**
+ * OAuth2 로그인과 세션 인증을 구성하고, 요청별 접근 권한과 인증·인가 실패 응답을 설정한다.
+ * OAuth 진입·로그인 경로, 오류 경로와 CSRF 토큰 발급은 인증 없이 허용하고 나머지는 인증을 요구한다.
+ */
 @Configuration
 public class SecurityConfig {
 
+    /**
+     * 기본 세션 정책과 CSRF 보호를 유지하면서 로그인·로그아웃 및 회원 세션 검사 필터를 연결한다.
+     * 인증 없이 허용된 경로도 CSRF 검사 제외 경로로 별도 지정하지 않는다.
+     */
     @Bean
     public SecurityFilterChain securityFilterChain(
         HttpSecurity http,
@@ -54,14 +61,14 @@ public class SecurityConfig {
         .logout(logout -> logout.logoutUrl("/api/logout")
             .invalidateHttpSession(true).clearAuthentication(true).deleteCookies("JSESSIONID")
             .logoutSuccessHandler((request, response, authentication) -> response.setStatus(204)))
+            // 공급자 사용자 정보 처리를 회원 연계 서비스로 연결하고 로그인 결과는 전용 처리기에 위임한다.
             .oauth2Login(oauth -> oauth
                 .userInfoEndpoint(userInfo -> userInfo.userService(userService))
                 .successHandler(successHandler)
                 .failureHandler(failureHandler));
-        // Existing CSRF, logout and OAuth settings remain; validate immutable login incarnation before authorization.
+        // 기존 CSRF·로그아웃·OAuth 설정을 유지하며, 인가 전에 세션의 내부 회원 ID와 공급자 식별 정보가 유효한지 검사한다.
         http.addFilterBefore(new com.ggmount.global.auth.oauth.ActiveMemberSessionFilter(members),
             org.springframework.security.web.access.intercept.AuthorizationFilter.class);
-        // 기본 세션 정책과 CSRF 보호를 유지합니다.
         return http.build();
     }
 }
