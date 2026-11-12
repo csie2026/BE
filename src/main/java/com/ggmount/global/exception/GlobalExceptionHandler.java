@@ -11,6 +11,11 @@ import java.util.Map;
  */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+    @ExceptionHandler(com.ggmount.member.service.ProfileAccountMismatch.class)
+    public ResponseEntity<?> profileAccountMismatch(com.ggmount.member.service.ProfileAccountMismatch e) {
+        return ResponseEntity.status(409).cacheControl(org.springframework.http.CacheControl.noStore())
+            .body(Map.of("error", "profile_account_mismatch", "message", e.getReason()));
+    }
     /** 산행 저장 충돌의 종류를 구분할 수 있도록 전용 오류 코드와 메시지를 409 응답으로 전달한다. */
     @ExceptionHandler(com.ggmount.hiking.service.HikingActivityConflict.class)
     public ResponseEntity<?> hikingConflict(com.ggmount.hiking.service.HikingActivityConflict e) {
