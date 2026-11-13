@@ -65,16 +65,19 @@ src/test/                  # 인증·권한·이미지·활동·일지·migratio
 | 영역 | 역할 |
 | --- | --- |
 | 인증 | Google/Kakao 로그인·callback, CSRF 조회, 로그아웃 |
-| 회원/프로필 | 본인 정보·프로필 수정, 공개 프로필, 본인 이미지 관리 |
+| 회원/프로필 | 본인 정보·expectedUserId 프로필 수정·탈퇴, 공개 프로필/이미지, 본인 이미지 관리 |
 | 산/코스 | 산 목록, 산별 코스, 특정 코스와 path |
 | 날씨 | 산별 단기예보 및 등산 적합도 |
 | 등산기록 | 실제 활동 저장과 본인 목록·상세 |
 | 등산일지 | 활동 기반 생성, 조회·공개·수정·삭제 |
-| 랭킹 | 저장된 점수 기준 공개 회원 목록 |
+| 랭킹 | 저장된 점수 기준 TOP100·본인 전체 순위, 명시적 재산정 |
+| 월 목표 | 회원·월별 선택적 거리/횟수 목표 조회·교체 |
 
-산 검색·시군 필터는 전체 목록을 받은 FE에서 처리합니다. 별도 산 상세나 점수 계산 API는 없습니다. 점수는 기존 본인 정보·공개 프로필·랭킹 응답에 포함됩니다.
+산 검색·시군 필터는 전체 목록을 받은 FE에서 처리하며 산 상세 전용 API는 없습니다. 활동 저장/일지 변경 시 점수를 자동 반영하고, 명시적 재산정은 POST /api/users/me/hiking-records/recalculate-score입니다. 점수는 본인 정보·공개 프로필·랭킹 응답으로 조회합니다.
 
-상세 요청·응답과 권한 정책은 DOCS Repository의 [ToPeak API 명세서.md](https://github.com/csie2026/DOCS/blob/main/ToPeak%20API%20%EB%AA%85%EC%84%B8%EC%84%9C.md)에서 관리합니다.
+v2는 첫 인정 산200·재방문100·서버 검증 정상70·현재 정책의 회원/산별 공개 일지50이며 일일 제한·속도·높이 가산점은 없습니다. v1 원장/일별 인증/공개 보너스 금액과 버전은 보존합니다. 산행 횟수(거리500m AND 활동20분 또는 검증 완등)는 점수 근거/원장과 독립입니다. 상세 정책은 [DOCS 점수·통계 정책](https://github.com/csie2026/DOCS/blob/dev/SCORE_POLICY.md)을 따릅니다.
+
+상세 요청·응답과 권한 정책은 DOCS Repository의 [API_SPEC.md](https://github.com/csie2026/DOCS/blob/dev/API_SPEC.md)에서 관리합니다.
 
 ## 데이터베이스
 
@@ -90,6 +93,7 @@ PostgreSQL을 사용하며 Flyway가 다음 migration을 순서대로 적용합�
 | V5 | 산행 점수 원장 |
 | V6 | 월 목표 개별 선택 |
 | V7 | GPS 활동 검증·요청 지문 |
+| V8 | 신규 회원 가입 시각(기존 회원 null 보존) |
 
 V4의 일지 연결 FK는 legacy 데이터 보존을 위해 nullable이며 기존 일지는 삭제하거나 활동에 임의 연결하지 않습니다. 새 일지는 필수 활동 ID와 소유권 검증, UNIQUE 제약을 사용합니다. 일지 삭제는 활동을 보존하므로 같은 활동으로 재작성할 수 있습니다. 월 목표는 월별 회원 API로 조회·수정합니다.
 
@@ -144,13 +148,15 @@ BE 디렉터리에서 실행합니다.
 .\mvnw.cmd clean package
 ```
 
-테스트 설정은 H2 PostgreSQL 모드와 테스트용 OAuth 등록을 사용합니다. 회원·일지 권한, 활동 저장 멱등성, legacy migration, 이미지 검증, OAuth Handler와 날씨 규칙 등을 검사합니다. 외부 날씨 live 테스트는 조건부이며 실제 공급자 로그인과 현장 GPS 인증을 전체 테스트 통과만으로 검증하는 것은 아닙니다. `clean package`는 테스트를 포함하고 `target`에 실행 JAR를 생성합니다.
+테스트 설정은 H2 PostgreSQL 모드와 테스트용 OAuth 등록을 사용합니다. 회원·일지 권한, 활동 저장 멱등성, legacy migration, 이미지 검증, OAuth Handler와 날씨 규칙 등을 검사합니다. 외부 날씨 live 테스트는 조건부이며 실제 공급자 로그인과 현장 GPS 인증을 전체 테스트 통과만으로 검증하는 것은 아닙니다. `clean package`는 테스트를 포함하고 `target`에 실행 JAR를 생성합니다. `./mvnw verify`(Windows `.\mvnw.cmd verify`)로 verify 단계까지 실행할 수 있습니다.
+
+`HikingActivityPostgresTests`는 `topeak.postgres.test-url` 시스템 속성 없이는 스킵됩니다. H2 통과는 PostgreSQL 검증을 대신하지 않습니다. 신규로 분리한 전용 로컬 DB와 계정·빈 초기 상태를 확인한 뒤 [PostgreSQL 실행 절차와 제한](docs/hiking-activity-integrity.md#be-테스트)을 따릅니다. 이 suite는 실제 커밋과 데이터 변경을 수행하며, 기존 개발·배포 DB에는 실행하지 않습니다.
 
 ## 운영 인계 및 심사 시연
 
 1. 담당자가 사용할 HTTPS origin, OAuth 앱 2개, 지도 등록 도메인, 기상청 키, DB 대상·백업과 시연 계정을 확정합니다. FE 빌드 시 `VITE_KAKAO_MAP_JAVASCRIPT_KEY`만 주입합니다. FE 번들에서 읽히므로 Kakao 콘솔에 허용 도메인을 제한합니다. BE 비밀은 런타임 환경변수로 주입합니다. 위 표의 OAuth 변수 네 개와 `FRONTEND_URL`, 운영 DB 변수 세 개, 날씨 시연에 필요한 `KMA_SERVICE_KEY`를 확인합니다.
 2. 시연 규모에서는 동일 origin의 TLS 종단·정적 FE와 단일 BE, 비공개 PostgreSQL 구성이 가능합니다. DATA 원천 수집 스크립트의 DATA_GO_KR_KEY는 서비스 기동에 필요하지 않습니다. 단일 인스턴스는 재시작 시 세션 재로그인이 필요합니다. 비용 계획에는 DB 백업·이미지 BYTEA 용량, 저장소·트래픽, 외부 API 할당량을 포함합니다. 도메인·예산·관리 주체가 정해져야 배포할 수 있습니다.
-3. DB 담당자가 승인된 대상, 백업 복원 가능 여부, Flyway 이력·체크섬·적용 대기 버전을 먼저 확인합니다. 신규 승인된 빈 DB는 BE 첫 기동 시 V1 → V2 → V3 → V3.1 → V4 → V5 → V6 → V7 순으로 적용되고 JPA가 검증합니다. 기존 DB에는 미적용 버전만 적용합니다. 불일치나 실패가 있으면 기동을 중단하고 이력을 대조합니다. clean·repair·seed 재적용·기존 SQL 수정·운영 DB 초기화는 수행하지 않습니다. 산/코스는 V2/V3에 포함되어 있습니다.
+3. DB 담당자가 승인된 대상, 백업 복원 가능 여부, Flyway 이력·체크섬·적용 대기 버전을 먼저 확인합니다. 신규 승인된 빈 DB는 BE 첫 기동 시 V1 → V2 → V3 → V3.1 → V4 → V5 → V6 → V7 → V8 순으로 적용되고 공통/prod의 JPA validate가 검증합니다(local은 ddl-auto: none). 기존 DB에는 미적용 버전만 적용합니다. 불일치나 실패가 있으면 기동을 중단하고 이력을 대조합니다. clean·repair·seed 재적용·기존 SQL 수정·운영 DB 초기화는 수행하지 않습니다. 산/코스는 V2/V3에 포함되어 있습니다.
 4. FE에서 `npm ci`, `npm run build` 후 `dist/`를 정적 루트로 제공합니다. BE에서 Java 21로 `./mvnw package`(Windows `.\mvnw.cmd package`) 후 `java -jar target/ggmount-0.0.1-SNAPSHOT.jar`로 기동합니다. 환경변수는 기동 전에 주입합니다. `SPRING_PROFILES_ACTIVE=prod`와 스킴·호스트·필요 시 포트로만 구성된 HTTPS `FRONTEND_URL`을 설정합니다(끝 슬래시 없음). 개인 PC 로컬은 위의 local 절차를 사용합니다.
 5. 프록시는 승인된 Host만 수락하고 HTTP를 HTTPS로 돌립니다. /api, /oauth2, /login 하위 경로는 원래 경로·메서드·쿠키·CSRF 헤더를 보존해 BE에 전달합니다. 이 경로에 SPA index.html 대체나 공유 캐시를 적용하지 않습니다. 이미지 업로드는 multipart 요청 6MB, GPS JSON은 앱 본문 한도 2MiB와 프록시 제한을 함께 확인합니다.
 6. BE 포트는 신뢰한 프록시만 접근하도록 제한합니다. 외부의 Forwarded 및 X-Forwarded-*를 제거하고 프록시가 검증한 원래 Host, 프로토콜, 포트, 클라이언트 주소로 다시 설정합니다. prod는 Tomcat 네이티브 전달 헤더 처리를 사용합니다. 실제 프록시 주소가 Tomcat 신뢰 범위에 있는지 확인하고 필요한 주소만 허용합니다. TLS 종단에서 생성된 Google/Kakao 로그인 이동 URL의 redirect_uri가 각 콘솔에 등록한 **공개 HTTPS origin + /login/oauth2/code/google 또는 /login/oauth2/code/kakao**와 정확히 같은지 확인합니다.
