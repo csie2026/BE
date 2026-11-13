@@ -314,6 +314,72 @@ class HikingScoringIntegrationTests {
         visibility(j2,true);assertEquals(490,score());deleteJournal(j2);assertEquals(440,score());
         assertEquals(1,jdbc.queryForObject("select count(*) from hiking_public_bonuses where member_id=?",Integer.class,ownerId));
     }
+    @Test void historicalPublicBonusKeepsItsVersionAndAmountAcrossActivityAndJournalChanges() throws Exception {
+        assertHistoricalPublicBonusPreserved(50);
+    }
+    @Test void historicalZeroPublicBonusIsNotRecertifiedByV2Publication() throws Exception {
+        assertHistoricalPublicBonusPreserved(0);
+    }
+    void assertHistoricalPublicBonusPreserved(int historicalPoints) throws Exception {
+        String legacyVersion = "visit-500m-20m-daily1-v1";
+        String first = UUID.randomUUID().toString(), second = UUID.randomUUID().toString();
+        save(owner, body(first)).andExpect(status().isOk());
+        long firstJournal = journal(first, true);
+        long firstActivity = activityId(first);
+        jdbc.update("update hiking_activity_scores set policy_version=? where activity_id=?", legacyVersion, firstActivity);
+        jdbc.update("insert into hiking_daily_certifications(member_id,certification_date,activity_id) values(?,?,?)",
+            ownerId, java.sql.Date.valueOf("2020-01-01"), firstActivity);
+        jdbc.update("update hiking_public_bonuses set points=?,policy_version=? where member_id=? and mountain_id=?",
+            historicalPoints, legacyVersion, ownerId, mountainId);
+        var historicalActivity = jdbc.queryForMap("select * from hiking_activity_scores where activity_id=?", firstActivity);
+        var historicalDaily = jdbc.queryForMap("select * from hiking_daily_certifications where activity_id=?", firstActivity);
+        var historicalBonus = jdbc.queryForMap("select * from hiking_public_bonuses where member_id=? and mountain_id=?", ownerId, mountainId);
+        long bonusEvents = jdbc.queryForObject("select count(*) from hiking_score_events where member_id=? and mountain_id=? and kind='PUBLIC_BONUS'",
+            Long.class, ownerId, mountainId);
+
+        rebuild();
+        assertEquals(270 + historicalPoints, score());
+        save(owner, body(first)).andExpect(status().isOk()); // 동일 UUID 재시도도 v1을 변경하지 않는다.
+        assertEquals(270 + historicalPoints, score());
+        visibility(firstJournal, false);
+        assertEquals(270 + historicalPoints, score());
+        visibility(firstJournal, true);
+        assertEquals(270 + historicalPoints, score());
+        deleteJournal(firstJournal);
+        assertEquals(270 + historicalPoints, score());
+
+        save(owner, day(body(second), 2)).andExpect(status().isOk());
+        assertEquals(440 + historicalPoints, score());
+        long secondJournal = journal(second, true); // 같은 산 재공개로 v2 보너스를 중복 지급하지 않는다.
+        assertEquals(440 + historicalPoints, score());
+        deleteJournal(secondJournal);
+        assertEquals(440 + historicalPoints, score());
+
+        String other = UUID.randomUUID().toString();
+        save(owner, mountain(body(other), otherMountain())).andExpect(status().isOk());
+        long otherJournal = journal(other, true);
+        assertEquals(760 + historicalPoints, score());
+        assertEquals(com.ggmount.hiking.service.HikingScorePolicy.VERSION,
+            jdbc.queryForObject("select policy_version from hiking_public_bonuses where member_id=? and mountain_id=?",
+                String.class, ownerId, otherMountain()));
+        visibility(otherJournal, false);
+        assertEquals(710 + historicalPoints, score());
+        visibility(otherJournal, true);
+        assertEquals(760 + historicalPoints, score());
+        deleteJournal(otherJournal);
+        assertEquals(710 + historicalPoints, score());
+        rebuild();
+        long before = events();
+        rebuild();
+        assertEquals(before, events());
+        assertEquals(historicalActivity, jdbc.queryForMap("select * from hiking_activity_scores where activity_id=?", firstActivity));
+        assertEquals(historicalDaily, jdbc.queryForMap("select * from hiking_daily_certifications where activity_id=?", firstActivity));
+        assertEquals(historicalBonus, jdbc.queryForMap("select * from hiking_public_bonuses where member_id=? and mountain_id=?", ownerId, mountainId));
+        assertEquals(bonusEvents, jdbc.queryForObject("select count(*) from hiking_score_events where member_id=? and mountain_id=? and kind='PUBLIC_BONUS'",
+            Long.class, ownerId, mountainId));
+        mvc.perform(get("/api/rankings/summary").session(owner)).andExpect(status().isOk())
+            .andExpect(jsonPath("$.mine.score").value(710 + historicalPoints));
+    }
     @Test void separatePublicBonusPolicyDoesNotMultiplyByDailyActivitiesAndExcludesUnlinkedLegacyJournals() throws Exception {
         String one=UUID.randomUUID().toString(),two=UUID.randomUUID().toString();
         save(owner,body(one)).andExpect(status().isOk());save(owner,mountain(body(two),otherMountain())).andExpect(status().isOk());
