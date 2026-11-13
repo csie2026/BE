@@ -35,6 +35,7 @@ public class HikingScoreService {
     private record Previous(String status, int visit, int summit, String version, java.time.LocalDate date) {
         long points() { return visit + summit; }
     }
+    private record PreviousBonus(int points, String version) {}
     // 호출자가 회원 잠금을 획득한 상태에서 실행하며, 이 메서드 자체에서 잠금을 다시 얻지는 않는다.
     public ScoreSummaryResponse rebuildLocked(Member member) {
         return rebuildLocked(member, null);
@@ -95,23 +96,30 @@ public class HikingScoreService {
         Set<Long> publicMountains = new HashSet<>(jdbc.queryForList(
             "select distinct a.mountain_id from hiking_records j join hiking_activities a on a.id=j.hiking_activity_id where j.member_id=? and a.member_id=j.member_id and j.is_public=true",
             Long.class, memberId));
-        Map<Long, Integer> previousBonuses = new HashMap<>();
-        jdbc.query("select mountain_id,points from hiking_public_bonuses where member_id=?",
-            (org.springframework.jdbc.core.RowCallbackHandler) rs -> previousBonuses.put(rs.getLong(1), rs.getInt(2)), memberId);
-        // 이전 보너스 대상도 함께 갱신해 마지막 공개 일지가 사라진 산은 0점으로 회수한다.
+        Map<Long, PreviousBonus> previousBonuses = new HashMap<>();
+        jdbc.query("select mountain_id,points,policy_version from hiking_public_bonuses where member_id=?",
+            (org.springframework.jdbc.core.RowCallbackHandler) rs -> previousBonuses.put(rs.getLong(1),
+                new PreviousBonus(rs.getInt(2), rs.getString(3))), memberId);
+        // 구정책 보너스는 금액·버전을 보존하고, 현재 정책 보너스만 공개 상태에 따라 지급·회수한다.
         Set<Long> allMountains = new HashSet<>(previousBonuses.keySet()); allMountains.addAll(publicMountains);
+        long bonusTotal = 0;
         for (long mountainId : allMountains) {
+            PreviousBonus previousBonus = previousBonuses.get(mountainId);
+            if (previousBonus != null && !HikingScorePolicy.VERSION.equals(previousBonus.version())) {
+                bonusTotal = Math.addExact(bonusTotal, previousBonus.points());
+                continue;
+            }
             int points = publicMountains.contains(mountainId) ? 50 : 0;
-            Integer old = previousBonuses.get(mountainId);
+            Integer old = previousBonus == null ? null : previousBonus.points();
             if (old == null) jdbc.update("insert into hiking_public_bonuses(member_id,mountain_id,points,policy_version) values(?,?,?,?)",
                 memberId, mountainId, points, HikingScorePolicy.VERSION);
             else jdbc.update("update hiking_public_bonuses set points=?,policy_version=? where member_id=? and mountain_id=?",
                 points, HikingScorePolicy.VERSION, memberId, mountainId);
             if (old == null || old != points) event(memberId, null, mountainId, "PUBLIC_BONUS", old == null ? 0L : old.longValue(), points,
                 points == 50 ? "PUBLIC_JOURNAL_PRESENT" : "NO_PUBLIC_JOURNAL");
+            bonusTotal = Math.addExact(bonusTotal, points);
         }
-        // 정수의 정확한 합·곱을 사용하며 범위를 넘으면 예외를 전파한다. 총점은 방문·정상·공개 일지 보너스의 합이다.
-        long bonusTotal = Math.multiplyExact((long) publicMountains.size(), 50L);
+        // 정수의 정확한 합을 사용하며 범위를 넘으면 예외를 전파한다. 총점은 방문·정상·공개 일지 보너스의 합이다.
         long total = Math.addExact(Math.addExact(visitTotal, summitTotal), bonusTotal);
         Long oldTotal = jdbc.queryForObject("select score from members where id=?", Long.class, memberId);
         if (oldTotal == null || oldTotal != total) event(memberId, null, null, "MEMBER_TOTAL", oldTotal, total, "REBUILD_FROM_CURRENT_SOURCES");
