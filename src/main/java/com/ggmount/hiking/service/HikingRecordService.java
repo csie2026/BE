@@ -66,6 +66,14 @@ public class HikingRecordService {
             .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "등산기록을 찾을 수 없습니다."));
         if (repository.existsByActivityId(activity.getId()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 등산일지를 작성한 기록입니다.");
+        boolean general = Double.isFinite(activity.getDistanceMeters())
+            && activity.getDistanceMeters() >= HikingScorePolicy.MIN_DISTANCE_METERS
+            && activity.getElapsedMs() >= HikingScorePolicy.MIN_ELAPSED_MS;
+        boolean verifiedSummit = activity.isCompleted()
+            && java.util.Objects.equals(activity.getGpsValidationVersion(), GpsEvidence.VALIDATION_VERSION);
+        if (!general && !verifiedSummit)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "등산일지는 500m·일시정지 제외 20분 이상이거나 서버 검증 완등인 산행에 작성할 수 있습니다.");
         var journal = repository.saveAndFlush(new HikingRecord(member, activity, request));
         scores.rebuildLocked(member);
         return HikingRecordResponse.from(journal);
