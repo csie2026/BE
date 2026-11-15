@@ -8,7 +8,7 @@ spring:
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
   flyway:
-    locations: classpath:db/migration,classpath:db/local-test
+    locations: classpath:db/migration
   jpa:
     hibernate:
       ddl-auto: none
