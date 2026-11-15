@@ -113,9 +113,10 @@ class RankingIntegrationTests {
             .andReturn().getResponse().getContentAsString().split("\"token\":\"")[1].split("\"")[0];
         String activity="""
             {"mountainId":%d,"courseId":null,"startedAt":"2020-01-01T01:00:00Z",
-             "endedAt":"2020-01-01T01:00:00Z","distanceMeters":0,"elapsedMs":0,
+             "endedAt":"2020-01-01T01:20:00Z","distanceMeters":500,"elapsedMs":1200000,
              "completed":false,"clientRequestId":"%s","gpsSegments":[]}
             """.formatted(mountain,key);
+        // 일지 작성 자격은 충족하되 GPS 거리 근거가 없어 활동 점수는 0인 기록이다.
         mvc.perform(post("/api/users/me/hiking-records").session(session).header("X-CSRF-TOKEN",csrf)
             .contentType("application/json").content(activity)).andExpect(status().isOk());
         long id=jdbc.queryForObject("select id from hiking_activities where member_id=1001 and client_request_id=?",Long.class,key);
