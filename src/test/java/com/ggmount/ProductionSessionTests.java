@@ -14,7 +14,13 @@ import static org.junit.jupiter.api.Assertions.*;
 // prod의 프록시·쿠키 설정을 임의 포트 로컬 서버에서 검사한다. HTTP로 응답 헤더를 읽으며 브라우저의 Secure 쿠키 전송은 검증하지 않는다.
 @ActiveProfiles("prod")
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-    properties = "FRONTEND_URL=https://localhost")
+    properties = {
+        "FRONTEND_URL=https://localhost",
+        "spring.datasource.url=jdbc:h2:mem:production_session;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+        "spring.datasource.username=sa", "spring.datasource.password=",
+        "spring.flyway.url=jdbc:h2:mem:production_session;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
+        "spring.flyway.user=sa", "spring.flyway.password="
+    })
 class ProductionSessionTests {
     @LocalServerPort int port;
 

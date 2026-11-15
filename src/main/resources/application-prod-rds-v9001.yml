@@ -1,0 +1,9 @@
+# 기존 운영 RDS의 V9000·V9001 적용 이력 호환을 위한 전용 프로필입니다.
+# prod,prod-rds-v9001 순서로 활성화하며 신규 DB에는 사용하지 않습니다.
+# 호환 SQL 복사 및 실행 전 보호 코드 구현 전에는 운영에 배포하지 않습니다.
+spring:
+  config:
+    activate:
+      on-profile: "prod & prod-rds-v9001"
+  flyway:
+    locations: classpath:db/migration,classpath:db/compat/rds-v9001
