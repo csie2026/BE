@@ -1,5 +1,5 @@
--- LOCAL ONLY. Removes the test mountain + course re-added by V9003, with a new migration;
--- V9000~V9003 stay untouched because they are already applied (Flyway checksum).
+-- Removes the test mountain + test course (V9000/V9001) from regular DBs, with a new migration;
+-- earlier versions stay untouched (already applied, Flyway checksum). No-op when 테스트산 does not exist.
 -- Child rows first, in FK order. Journals are kept, only unlinked from the activity.
 UPDATE hiking_records SET hiking_activity_id = NULL
 WHERE hiking_activity_id IN (SELECT id FROM hiking_activities WHERE mountain_id IN (SELECT id FROM mountains WHERE name = '테스트산'));
