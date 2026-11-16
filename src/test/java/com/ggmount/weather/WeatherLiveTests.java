@@ -7,7 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** 실제 기상청 API 호출. KMA_SERVICE_KEY 환경변수가 있을 때만 실행됩니다. */
+/** 실제 기상청 API를 호출하며 KMA_SERVICE_KEY 환경 변수가 있을 때만 실행한다. */
 // 환경변수가 없거나 빈 값이면 클래스 실행을 건너뛴다. 값이 있어도 잘못된 키·외부 장애·네트워크 문제는 실패로 전파된다.
 // Spring 테스트 컨텍스트와 시드 DB에 의존하며 Mock 응답 대신 서비스의 실제 HTTP 예보 조회를 사용한다. 관측값 검증은 아니다.
 @SpringBootTest(properties = "app.kma.service-key=${KMA_SERVICE_KEY}")

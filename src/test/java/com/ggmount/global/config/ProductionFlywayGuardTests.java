@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+// 운영 프로필에서 마이그레이션 경로·카탈로그·기존 이력 우회를 시작 전에 차단하는지 검증한다.
 class ProductionFlywayGuardTests {
     private final ProductionFlywayGuard guard = new ProductionFlywayGuard();
 
@@ -135,7 +136,7 @@ class ProductionFlywayGuardTests {
         assertThrows(IllegalStateException.class, () -> guard.checkCatalog(new MigrationInfo[]{mismatch}, false));
     }
 
-    // JDBC 전체를 모의 처리하여 외부 DB 연결 없이 실제 읽기 경로를 검사합니다.
+    // JDBC 전체를 모의 처리하여 외부 DB 연결 없이 실제 읽기 경로를 검사한다.
     private FluentConfiguration historyConfiguration(Object[][] rows) throws Exception {
         DataSource datasource = mock(DataSource.class);
         Connection connection = mock(Connection.class);

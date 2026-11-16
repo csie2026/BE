@@ -9,7 +9,7 @@ import org.springframework.core.env.Environment;
 
 @Configuration(proxyBeanMethods = false)
 public class ProductionFlywayConfiguration {
-    // Flyway 자동 설정이 비활성화되어도 빈 생성 전에 환경 검사를 수행합니다.
+    // Flyway 자동 설정이 비활성화되어도 빈 생성 전에 환경 검사를 수행한다.
     @Bean
     static BeanFactoryPostProcessor productionFlywayEnvironmentCheck(Environment environment) {
         return beanFactory -> ProductionFlywayGuard.checkEnvironment(environment);
