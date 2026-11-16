@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 // 실제 OAuth 왕복·공유 쿠키 브라우저가 아닌, 격리 H2와 실제 보안 필터·서비스의 요청 경계를 검증한다.
+// 프로필 저장 전후 계정 재확인과 세션 전환 시 이전 회원의 변경이 반영되지 않는지 검증한다.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:profile_account_safety;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.driver-class-name=org.h2.Driver", "spring.datasource.username=sa", "spring.datasource.password=",

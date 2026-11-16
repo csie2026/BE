@@ -20,6 +20,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /** 통계 원천인 본인 산행 목록을 검증하며, 활동은 저장 검증을 거치지 않고 SQL로 준비한다. */
+// 마이페이지 통계가 점수·일지 수가 아닌 산행 활동의 거리·시간·완등 근거를 사용하는지 검증한다.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:statistics_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",

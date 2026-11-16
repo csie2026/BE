@@ -81,7 +81,7 @@ public class KmaForecastClient {
             return parseResponse(http.get().uri(uri).retrieve().body(KmaResponse.class));
         }
         catch (Exception e) {
-            // 키 오류 등은 JSON 대신 XML이 와서 파싱에서 실패합니다
+            // 키 오류 등은 JSON 대신 XML이 와서 파싱에서 실패한다.
             // HTTP 호출·응답 변환 실패는 고정된 502 메시지로 전파하며 원본 예외·요청 URI·인증키를 메시지에 넣지 않는다.
             // 이 클래스는 직접 로그를 남기지 않지만 하위 HTTP 계층의 로그 마스킹을 설정하는 코드는 없다.
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "날씨 정보를 가져오지 못했습니다.");

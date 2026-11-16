@@ -26,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// 거리·활동 시간 또는 서버 검증 완등을 근거로 일지 작성 가능 여부와 중복 연결 차단을 검증한다.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:journal_eligibility;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",

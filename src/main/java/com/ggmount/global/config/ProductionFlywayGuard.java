@@ -15,6 +15,7 @@ import org.flywaydb.core.api.configuration.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 
+/** 운영 환경에서 허용된 Flyway 설정·리소스·이력만 사용하도록 애플리케이션 시작 전에 검증한다. */
 public final class ProductionFlywayGuard {
     private static final String REGULAR = "classpath:db/migration";
     private static final String COMPAT = "classpath:db/compat/rds-v9001";
@@ -27,6 +28,7 @@ public final class ProductionFlywayGuard {
     }
 
     static void checkEnvironment(Environment environment) {
+        // 호환 프로필은 기존 운영 DB의 V9000·V9001 이력 복구에만 사용하며 다른 프로필과 혼용하지 않는다.
         boolean prod = isProduction(environment);
         boolean compat = environment.matchesProfiles("prod-rds-v9001");
         require(!compat || prod, "호환 프로필에는 prod가 필요합니다.");
@@ -49,12 +51,13 @@ public final class ProductionFlywayGuard {
             Map<MigrationVersion, MigrationInfo> catalog = checkCatalog(flyway.info().all(), compat);
             if (compat) checkHistory(config, catalog);
         } catch (Exception exception) {
-            // 연결 주소나 인증 정보를 포함할 수 있는 원인 예외는 외부에 전달하지 않습니다.
+            // 연결 주소나 인증 정보를 포함할 수 있는 원인 예외는 외부에 전달하지 않는다.
             throw new IllegalStateException("운영 Flyway 사전 검증에 실패하여 실행을 중단합니다.");
         }
     }
 
     void checkConfiguration(Configuration config, boolean compat) {
+        // 우회 실행·사용자 정의 콜백·임의 대상 버전처럼 운영 이력을 바꿀 수 있는 설정을 모두 차단한다.
         var locations = Arrays.stream(config.getLocations()).map(Object::toString).toList();
         Set<String> expected = compat ? Set.of(REGULAR, COMPAT) : Set.of(REGULAR);
         require(locations.size() == expected.size() && new HashSet<>(locations).equals(expected),
@@ -84,7 +87,8 @@ public final class ProductionFlywayGuard {
     }
 
     private void checkResources(Configuration config) throws Exception {
-        // info()에도 SQL 콜백이 연결될 수 있으므로 DB 접근 전에 리소스를 검사합니다.
+        // info()에도 SQL 콜백이 연결될 수 있으므로 DB 접근 전에 리소스를 검사한다.
+        // 같은 버전의 SQL이나 실행 가능한 클래스를 허용 경로에 추가해 검증을 우회할 수 없게 한다.
         var resolver = new PathMatchingResourcePatternResolver(config.getClassLoader());
         Set<MigrationVersion> versions = new HashSet<>();
         for (var location : config.getLocations()) {
@@ -104,6 +108,7 @@ public final class ProductionFlywayGuard {
     }
 
     Map<MigrationVersion, MigrationInfo> checkCatalog(MigrationInfo[] migrations, boolean compat) {
+        // Flyway가 해석한 카탈로그에서 중복 버전과 호환 전용 체크섬을 DB 연결 전에 확인한다.
         Map<MigrationVersion, MigrationInfo> catalog = new HashMap<>();
         for (MigrationInfo migration : migrations) {
             MigrationVersion version = migration.getVersion();
@@ -130,7 +135,8 @@ public final class ProductionFlywayGuard {
     }
 
     void checkHistory(Configuration config, Map<MigrationVersion, MigrationInfo> catalog) throws Exception {
-        // JPA를 사용하지 않고 실제 Flyway 연결과 스키마·이력 테이블을 사용합니다.
+        // JPA를 사용하지 않고 실제 Flyway 연결과 스키마·이력 테이블을 사용한다.
+        // 호환 대상 DB에 저장된 성공 이력만 읽으며 SQL이나 이력 행을 수정하지 않는다.
         try (Connection connection = config.getDataSource().getConnection()) {
             connection.setReadOnly(true);
             String schema = config.getDefaultSchema();

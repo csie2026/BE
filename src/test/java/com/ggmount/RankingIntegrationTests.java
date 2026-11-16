@@ -18,6 +18,7 @@ import java.util.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
+// R01 목록과 R02 요약이 동일한 정렬·순위 정책을 따르고 본인 정보와 상위 100명 경계를 지키는지 검증한다.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:ranking_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",
