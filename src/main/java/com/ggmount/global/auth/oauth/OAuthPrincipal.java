@@ -6,8 +6,8 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 
 /**
- * 원본 속성과 공통 사용자 정보를 함께 보관하는 세션 principal입니다.
- * 공급자의 권한·속성은 상위 클래스에 전달하고, 공급자 계정 정보와 내부 회원 ID는 별도로 보관합니다.
+ * 원본 속성과 공통 사용자 정보를 함께 보관하는 세션 principal이다.
+ * 공급자의 권한·속성은 상위 클래스에 전달하고 공급자 계정 정보와 내부 회원 ID는 별도로 보관한다.
  */
 public class OAuthPrincipal extends DefaultOAuth2User {
 

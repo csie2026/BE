@@ -12,7 +12,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Flyway V2(mountains)·V3(courses) 시드 데이터의 무결성. 데이터를 다시 생성하면 숫자 기대값도 함께 갱신합니다. */
+/** Flyway V2(mountains)·V3(courses) 시드 데이터의 무결성을 검사한다. 데이터를 다시 생성하면 숫자 기대값도 함께 갱신한다. */
 // src/main/resources/db/migration의 SQL을 Flyway가 적재한 DB를 직접 조회하며 테스트가 원본 지리 파일을 파싱하지는 않는다.
 // 기본 테스트 설정은 PostgreSQL 호환 메모리 H2이며, 테스트 트랜잭션의 변경은 롤백된다. 마이그레이션 재실행은 검사하지 않는다.
 @SpringBootTest

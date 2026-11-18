@@ -26,6 +26,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import static org.junit.jupiter.api.Assertions.*;
 
+// 공개 프로필 통계가 일지 공개 여부와 무관하게 저장된 GPS 산행 활동만 집계하는지 검증한다.
 @SpringBootTest(properties = {
     "spring.datasource.url=jdbc:h2:mem:public_profile_review;MODE=PostgreSQL;DB_CLOSE_DELAY=-1",
     "spring.datasource.username=sa", "spring.datasource.password=",

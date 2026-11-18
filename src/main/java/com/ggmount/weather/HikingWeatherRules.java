@@ -5,7 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.function.Function;
 
-/** 시간별 예보로 등산 적합도(좋음/주의/나쁨)와 안내 문구를 정합니다. 가장 나쁜 항목이 전체 등급이 됩니다. */
+/** 시간별 예보로 등산 적합도(좋음/주의/나쁨)와 안내 문구를 정하며 가장 나쁜 항목을 전체 등급으로 사용한다. */
 // ToPeak 내부 안내 규칙으로 실제 산행 안전성을 보장하지 않으며, 산행 인증·회원 점수 계산에는 사용하지 않는다.
 // 서비스가 선택한 시간대의 예보를 받으며 하늘 상태·습도는 등급 계산에 사용하지 않는다.
 public final class HikingWeatherRules {

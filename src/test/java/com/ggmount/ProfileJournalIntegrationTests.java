@@ -23,6 +23,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+// 프로필 설정과 산·코스 조회부터 산행 저장·일지 연결까지 회원 소유권과 HTTP 응답 계약을 함께 검증한다.
 @SpringBootTest
 @Transactional
 class ProfileJournalIntegrationTests {
